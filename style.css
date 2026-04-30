@@ -119,7 +119,7 @@ video {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(680px, 54vw);
+  width: min(760px, 62vw);
   height: auto;
   transform: translate(-50%, -50%);
   opacity: 0.65;
@@ -136,18 +136,23 @@ video {
 @keyframes logoBreathe {
   0% {
     transform: translate(-50%, -50%) scale(1);
-    opacity: 0.55;
+    opacity: 0.56;
   }
-
   50% {
     transform: translate(-50%, -50%) scale(1.025);
     opacity: 0.68;
   }
-
   100% {
     transform: translate(-50%, -50%) scale(1);
-    opacity: 0.55;
+    opacity: 0.56;
   }
+}
+
+canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 #paintCanvas {
