@@ -16,9 +16,11 @@
 <body>
   <div id="splash">
     <div class="splash-card">
-      <div class="eyebrow">BxCM Creative World</div>
+      <img src="bxcm-logo.png" class="logo" alt="Bronx Children's Museum Logo" />
+
+      <div class="eyebrow">Interactive Creative World</div>
       <h1>Color Motion Playground</h1>
-      <p>Move your hands to paint with light. Jump to make the world bloom.</p>
+      <p>Move your hands to paint with Bronx color. Jump to make the world bloom.</p>
 
       <select id="cameraSelect"></select>
 
@@ -32,7 +34,10 @@
       </select>
 
       <button id="startBtn">Start Experience</button>
-      <div class="hint">Allow camera access when prompted.</div>
+
+      <div class="hint">
+        Keys: 1–6 Modes · C Clear · A Auto-Rotate · F Fullscreen
+      </div>
     </div>
   </div>
 
@@ -41,6 +46,11 @@
 
     <canvas id="paintCanvas"></canvas>
     <canvas id="fxCanvas"></canvas>
+    <canvas id="uiCanvas"></canvas>
+
+    <div id="brandBug">
+      <img src="bxcm-logo.png" alt="BxCM Logo" />
+    </div>
 
     <div id="topTitle" class="introText">
       <span>CREATE</span>
@@ -50,7 +60,21 @@
     <div id="instruction" class="introText">
       Move your hands slowly. Jump to make the world react.
     </div>
+
+    <div id="staffPanel">
+      <button data-mode="paint">Paint</button>
+      <button data-mode="bubbles">Bubbles</button>
+      <button data-mode="stars">Stars</button>
+      <button data-mode="flowers">Flowers</button>
+      <button data-mode="mist">Mist</button>
+      <button data-mode="waves">Waves</button>
+      <button id="clearBtn">Clear</button>
+      <button id="autoBtn">Auto: Off</button>
+    </div>
+
+    <div id="modeBadge">Paint Trails</div>
   </div>
+
   <script src="game.js"></script>
 </body>
 </html>
