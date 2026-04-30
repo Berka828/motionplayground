@@ -1,6 +1,7 @@
 const video = document.getElementById("video");
 const paintCanvas = document.getElementById("paintCanvas");
 const fxCanvas = document.getElementById("fxCanvas");
+
 const paintCtx = paintCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
 
@@ -19,8 +20,10 @@ let currentMode = "paint";
 
 let lastLeftHand = null;
 let lastRightHand = null;
+
 let particles = [];
 let ribbons = [];
+
 let previousShoulderY = null;
 let jumpCooldown = 0;
 
@@ -36,6 +39,7 @@ const colors = [
 function resizeCanvases() {
   paintCanvas.width = window.innerWidth;
   paintCanvas.height = window.innerHeight;
+
   fxCanvas.width = window.innerWidth;
   fxCanvas.height = window.innerHeight;
 }
@@ -151,7 +155,7 @@ function randomColor() {
 function fadePaintCanvas() {
   paintCtx.save();
   paintCtx.globalCompositeOperation = "source-over";
-  paintCtx.fillStyle = "rgba(246, 240, 229, 0.026)";
+  paintCtx.fillStyle = "rgba(255, 255, 255, 0.018)";
   paintCtx.fillRect(0, 0, paintCanvas.width, paintCanvas.height);
   paintCtx.restore();
 }
@@ -211,6 +215,8 @@ function drawBubbles(current, last) {
       color
     });
   }
+
+  maybeSmallRing(current.x, current.y, color);
 }
 
 function drawStars(current, last) {
@@ -230,6 +236,8 @@ function drawStars(current, last) {
       rotation: Math.random() * Math.PI
     });
   }
+
+  maybeSmallRing(current.x, current.y, color);
 }
 
 function drawFlowers(current, last) {
@@ -251,6 +259,8 @@ function drawFlowers(current, last) {
     color,
     rotation: Math.random() * Math.PI
   });
+
+  maybeSmallRing(current.x, current.y, color);
 }
 
 function drawMist(current, last) {
@@ -269,6 +279,8 @@ function drawMist(current, last) {
       color
     });
   }
+
+  maybeSmallRing(current.x, current.y, color);
 }
 
 function drawWaves(current, last) {
@@ -278,7 +290,7 @@ function drawWaves(current, last) {
     x: current.x,
     y: current.y,
     radius: 18,
-    alpha: 0.7,
+    alpha: 0.9,
     color,
     thickness: Math.random() * 5 + 3
   });
@@ -302,6 +314,19 @@ function drawWaves(current, last) {
   paintCtx.restore();
 }
 
+function maybeSmallRing(x, y, color) {
+  if (Math.random() > 0.82) {
+    ribbons.push({
+      x,
+      y,
+      radius: Math.random() * 18 + 8,
+      alpha: 0.7,
+      color,
+      thickness: Math.random() * 4 + 2
+    });
+  }
+}
+
 function createSparkles(x, y, color, count = 8) {
   for (let i = 0; i < count; i++) {
     particles.push({
@@ -321,55 +346,177 @@ function createSparkles(x, y, color, count = 8) {
 function createOrganicBloom(x, y) {
   const bloomColors = ["#ff6b35", "#ffd54f", "#00b2a9", "#f15bb5", "#7bdff2"];
 
+  // Always include rings, but now they are secondary/supporting,
+  // not the main explosion for every mode.
+  for (let i = 0; i < 8; i++) {
+    ribbons.push({
+      x: x + (Math.random() - 0.5) * 260,
+      y: y + (Math.random() - 0.5) * 180,
+      radius: Math.random() * 35 + 25,
+      alpha: 1,
+      color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
+      thickness: Math.random() * 9 + 4
+    });
+  }
+
+  if (currentMode === "paint") {
+    createPaintExplosion(x, y, bloomColors);
+    return;
+  }
+
+  if (currentMode === "bubbles") {
+    createBubbleExplosion(x, y, bloomColors);
+    return;
+  }
+
+  if (currentMode === "stars") {
+    createStarExplosion(x, y, bloomColors);
+    return;
+  }
+
+  if (currentMode === "flowers") {
+    createFlowerExplosion(x, y, bloomColors);
+    return;
+  }
+
+  if (currentMode === "mist") {
+    createMistExplosion(x, y, bloomColors);
+    return;
+  }
+
+  if (currentMode === "waves") {
+    createWaveExplosion(x, y, bloomColors);
+    return;
+  }
+}
+
+function createPaintExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 24; i++) {
+    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+
+    paintCtx.save();
+    paintCtx.globalCompositeOperation = "multiply";
+    paintCtx.globalAlpha = 0.34;
+    paintCtx.fillStyle = color;
+
+    paintCtx.beginPath();
+    paintCtx.arc(
+      x + (Math.random() - 0.5) * 500,
+      y + (Math.random() - 0.5) * 340,
+      Math.random() * 92 + 34,
+      0,
+      Math.PI * 2
+    );
+    paintCtx.fill();
+
+    paintCtx.restore();
+  }
+
+  createSparkles(x, y, randomColor(), 70);
+}
+
+function createBubbleExplosion(x, y, bloomColors) {
   for (let i = 0; i < 90; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 10 + 2;
+    const speed = Math.random() * 8 + 2;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
-      type: Math.random() > 0.5 ? "flower" : "mist",
+      type: "bubble",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      radius: Math.random() * 42 + 16,
+      alpha: 0.95,
+      decay: 0.006,
+      color
+    });
+  }
+}
+
+function createStarExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 105; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 11 + 3;
+    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+
+    particles.push({
+      type: "star",
       x,
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 22 + 12,
-      alpha: 0.85,
-      decay: Math.random() * 0.012 + 0.006,
+      radius: Math.random() * 18 + 8,
+      alpha: 1,
+      decay: 0.01,
       color,
       rotation: Math.random() * Math.PI
     });
   }
+}
 
-  for (let i = 0; i < 10; i++) {
+function createFlowerExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 85; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 7 + 2;
+    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+
+    particles.push({
+      type: "flower",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 26 + 16,
+      alpha: 1,
+      decay: 0.006,
+      color,
+      rotation: Math.random() * Math.PI
+    });
+  }
+}
+
+function createMistExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 140; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 5 + 1;
+    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+
+    particles.push({
+      type: "mist",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 62 + 30,
+      alpha: 0.4,
+      decay: 0.004,
+      color
+    });
+  }
+}
+
+function createWaveExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 26; i++) {
     ribbons.push({
-      x: x + (Math.random() - 0.5) * 240,
-      y: y + (Math.random() - 0.5) * 160,
-      radius: Math.random() * 40 + 30,
-      alpha: 0.75,
+      x: x + (Math.random() - 0.5) * 540,
+      y: y + (Math.random() - 0.5) * 360,
+      radius: Math.random() * 50 + 30,
+      alpha: 1,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 8 + 4
+      thickness: Math.random() * 12 + 5
     });
   }
 
-  paintCtx.save();
-  paintCtx.globalCompositeOperation = "multiply";
-
-  for (let i = 0; i < 12; i++) {
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
-    paintCtx.beginPath();
-    paintCtx.arc(
-      x + (Math.random() - 0.5) * 300,
-      y + (Math.random() - 0.5) * 220,
-      Math.random() * 70 + 30,
-      0,
-      Math.PI * 2
+  for (let i = 0; i < 60; i++) {
+    createSparkles(
+      x + (Math.random() - 0.5) * 440,
+      y + (Math.random() - 0.5) * 300,
+      bloomColors[Math.floor(Math.random() * bloomColors.length)],
+      1
     );
-    paintCtx.fillStyle = color;
-    paintCtx.globalAlpha = 0.26;
-    paintCtx.fill();
   }
-
-  paintCtx.restore();
 }
 
 function drawStarShape(ctx, x, y, radius, color, alpha, rotation) {
@@ -408,7 +555,7 @@ function drawFlowerShape(ctx, x, y, radius, color, alpha, rotation) {
     ctx.fill();
   }
 
-  ctx.fillStyle = "#fffaf0";
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(0, 0, radius * 0.18, 0, Math.PI * 2);
   ctx.fill();
@@ -465,11 +612,15 @@ function updateParticles() {
     }
   }
 
+  updateRibbons();
+}
+
+function updateRibbons() {
   for (let i = ribbons.length - 1; i >= 0; i--) {
     const r = ribbons[i];
 
-    r.alpha -= 0.014;
-    r.radius += 2.4;
+    r.alpha -= 0.006;
+    r.radius += 1.65;
 
     fxCtx.save();
     fxCtx.globalCompositeOperation = "multiply";
@@ -480,6 +631,7 @@ function updateParticles() {
     fxCtx.beginPath();
     fxCtx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
     fxCtx.stroke();
+
     fxCtx.restore();
 
     if (r.alpha <= 0) {
@@ -515,7 +667,7 @@ function drawSoftBackgroundMotion() {
 
   fxCtx.save();
   fxCtx.globalCompositeOperation = "multiply";
-  fxCtx.globalAlpha = 0.055;
+  fxCtx.globalAlpha = 0.035;
 
   const bgColors = ["#ffd54f", "#00b2a9", "#ff6b35"];
 
