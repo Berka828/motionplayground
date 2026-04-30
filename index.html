@@ -36,7 +36,7 @@
       <button id="startBtn">Start Experience</button>
 
       <div class="hint">
-        Keys: 1–6 Modes · C Clear · A Auto-Rotate · F Fullscreen
+        Keys: 1–6 Modes · C Clear · A Auto · F Fullscreen · H Hide Controls · S Sound
       </div>
     </div>
   </div>
@@ -61,6 +61,9 @@
       Move your hands slowly. Jump to make the world react.
     </div>
 
+    <div id="modeBadge">Paint Trails</div>
+    <div id="cooldownBadge">Ready</div>
+
     <div id="staffPanel">
       <button data-mode="paint">Paint</button>
       <button data-mode="bubbles">Bubbles</button>
@@ -68,8 +71,11 @@
       <button data-mode="flowers">Flowers</button>
       <button data-mode="mist">Mist</button>
       <button data-mode="waves">Waves</button>
+
       <button id="clearBtn">Clear</button>
       <button id="autoBtn">Auto: Off</button>
+      <button id="soundBtn">Sound: Off</button>
+      <button id="hideBtn">Hide Controls</button>
 
       <label>
         Fade
@@ -80,10 +86,19 @@
         Float
         <input id="dragSlider" type="range" min="920" max="995" value="972" />
       </label>
-    </div>
 
-    <div id="modeBadge">Paint Trails</div>
+      <label>
+        Jump
+        <input id="jumpSlider" type="range" min="18" max="70" value="34" />
+      </label>
+
+      <label>
+        Smooth
+        <input id="smoothSlider" type="range" min="8" max="45" value="22" />
+      </label>
+    </div>
   </div>
+
   <script src="game.js"></script>
 </body>
 </html>
