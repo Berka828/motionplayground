@@ -15,11 +15,20 @@ const cameraSelect = document.getElementById("cameraSelect");
 const modeSelect = document.getElementById("modeSelect");
 const instruction = document.getElementById("instruction");
 const topTitle = document.getElementById("topTitle");
+
 const clearBtn = document.getElementById("clearBtn");
 const autoBtn = document.getElementById("autoBtn");
-const modeBadge = document.getElementById("modeBadge");
+const soundBtn = document.getElementById("soundBtn");
+const hideBtn = document.getElementById("hideBtn");
+
 const fadeSlider = document.getElementById("fadeSlider");
 const dragSlider = document.getElementById("dragSlider");
+const jumpSlider = document.getElementById("jumpSlider");
+const smoothSlider = document.getElementById("smoothSlider");
+
+const staffPanel = document.getElementById("staffPanel");
+const modeBadge = document.getElementById("modeBadge");
+const cooldownBadge = document.getElementById("cooldownBadge");
 
 let detector = null;
 let currentStream = null;
@@ -27,6 +36,10 @@ let running = false;
 
 let currentMode = "paint";
 let autoRotate = false;
+let controlsHidden = false;
+let soundEnabled = false;
+let audioCtx = null;
+
 let lastAutoRotateTime = 0;
 const autoRotateInterval = 30000;
 
@@ -37,7 +50,8 @@ let smoothRightHand = null;
 
 let particles = [];
 let ribbons = [];
-let floatingLetters = [];
+let handGlows = [];
+let resetWipe = null;
 
 let previousShoulderY = null;
 let jumpCooldown = 0;
@@ -45,6 +59,8 @@ let noPoseFrames = 0;
 
 let fadeAmount = 0.012;
 let dragAmount = 0.972;
+let jumpSensitivity = 34;
+let smoothingAmount = 0.22;
 
 const BRAND = {
   yellow: "#ffd100",
@@ -98,6 +114,14 @@ fadeSlider.addEventListener("input", () => {
 
 dragSlider.addEventListener("input", () => {
   dragAmount = Number(dragSlider.value) / 1000;
+});
+
+jumpSlider.addEventListener("input", () => {
+  jumpSensitivity = Number(jumpSlider.value);
+});
+
+smoothSlider.addEventListener("input", () => {
+  smoothingAmount = Number(smoothSlider.value) / 100;
 });
 
 async function loadCameras() {
@@ -201,12 +225,12 @@ function videoToCanvasPoint(point) {
   };
 }
 
-function smoothPoint(previous, current, amount = 0.22) {
+function smoothPoint(previous, current) {
   if (!previous) return current;
 
   return {
-    x: previous.x + (current.x - previous.x) * amount,
-    y: previous.y + (current.y - previous.y) * amount
+    x: previous.x + (current.x - previous.x) * smoothingAmount,
+    y: previous.y + (current.y - previous.y) * smoothingAmount
   };
 }
 
@@ -214,13 +238,25 @@ function randomColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-function clearScreen() {
+function clearScreenAnimated() {
+  resetWipe = {
+    radius: 0,
+    alpha: 1,
+    maxRadius: Math.hypot(window.innerWidth, window.innerHeight)
+  };
+
+  particles = [];
+  ribbons = [];
+  playChime(520, 0.08, "sine");
+}
+
+function finishClearScreen() {
   paintCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   particles = [];
   ribbons = [];
-  floatingLetters = [];
+  handGlows = [];
 }
 
 function fadePaintCanvas() {
@@ -237,11 +273,16 @@ function setMode(modeId) {
 
   const mode = modes.find(m => m.id === modeId);
   modeBadge.textContent = mode ? mode.label : modeId;
+
+  modeBadge.classList.remove("show");
+  void modeBadge.offsetWidth;
   modeBadge.classList.add("show");
 
   setTimeout(() => {
     modeBadge.classList.remove("show");
-  }, 1400);
+  }, 1600);
+
+  playChime(360 + modes.findIndex(m => m.id === modeId) * 45, 0.06, "triangle");
 }
 
 function nextMode() {
@@ -261,6 +302,16 @@ function drawHandEffect(current, last) {
   if (currentMode === "waves") drawWaves(current, last);
 }
 
+function addHandGlow(point, color) {
+  handGlows.push({
+    x: point.x,
+    y: point.y,
+    radius: 44,
+    alpha: 0.36,
+    color
+  });
+}
+
 function drawPaintTrail(current, last) {
   const speed = Math.hypot(current.x - last.x, current.y - last.y);
   const width = Math.min(72, Math.max(18, speed * 0.45));
@@ -270,9 +321,8 @@ function drawPaintTrail(current, last) {
   paintCtx.globalCompositeOperation = "source-over";
   paintCtx.lineCap = "round";
   paintCtx.lineJoin = "round";
-  paintCtx.shadowBlur = 0;
   paintCtx.strokeStyle = color;
-  paintCtx.globalAlpha = 0.62;
+  paintCtx.globalAlpha = 0.6;
   paintCtx.lineWidth = width;
 
   paintCtx.beginPath();
@@ -284,27 +334,30 @@ function drawPaintTrail(current, last) {
     current.y
   );
   paintCtx.stroke();
-
   paintCtx.restore();
 
+  addHandGlow(current, color);
+
   if (speed > 22) {
-    createSoftDots(current.x, current.y, color, 4);
+    createSoftDots(current.x, current.y, color, 3);
+    playMovementSound(speed);
   }
 }
 
-function drawBubbles(current, last) {
+function drawBubbles(current) {
   const color = randomColor();
+  addHandGlow(current, color);
 
   for (let i = 0; i < 2; i++) {
     particles.push({
       type: "bubble",
       x: current.x + (Math.random() - 0.5) * 34,
       y: current.y + (Math.random() - 0.5) * 34,
-      vx: (Math.random() - 0.5) * 0.9,
-      vy: -Math.random() * 1.3 - 0.3,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: -Math.random() * 1.2 - 0.3,
       radius: Math.random() * 22 + 14,
-      alpha: 0.7,
-      decay: 0.0048,
+      alpha: 0.68,
+      decay: 0.0045,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -314,19 +367,20 @@ function drawBubbles(current, last) {
   maybeSmallRing(current.x, current.y, color);
 }
 
-function drawStars(current, last) {
+function drawStars(current) {
   const color = randomColor();
+  addHandGlow(current, color);
 
   for (let i = 0; i < 3; i++) {
     particles.push({
       type: "star",
       x: current.x + (Math.random() - 0.5) * 44,
       y: current.y + (Math.random() - 0.5) * 44,
-      vx: (Math.random() - 0.5) * 2.2,
-      vy: (Math.random() - 0.5) * 2.2,
-      radius: Math.random() * 10 + 8,
-      alpha: 0.9,
-      decay: 0.01,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      radius: Math.random() * 9 + 7,
+      alpha: 0.88,
+      decay: 0.009,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -341,16 +395,17 @@ function drawFlowers(current, last) {
   if (speed < 8 && Math.random() > 0.3) return;
 
   const color = randomColor();
+  addHandGlow(current, color);
 
   particles.push({
     type: "flower",
     x: current.x + (Math.random() - 0.5) * 20,
     y: current.y + (Math.random() - 0.5) * 20,
-    vx: (Math.random() - 0.5) * 0.4,
-    vy: (Math.random() - 0.5) * 0.4,
-    radius: Math.random() * 18 + 18,
-    alpha: 0.86,
-    decay: 0.0035,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: (Math.random() - 0.5) * 0.35,
+    radius: Math.random() * 16 + 17,
+    alpha: 0.84,
+    decay: 0.0034,
     color,
     rotation: Math.random() * Math.PI,
     grow: 1
@@ -359,19 +414,20 @@ function drawFlowers(current, last) {
   maybeSmallRing(current.x, current.y, color);
 }
 
-function drawMist(current, last) {
+function drawMist(current) {
   const color = randomColor();
+  addHandGlow(current, color);
 
   for (let i = 0; i < 4; i++) {
     particles.push({
       type: "mist",
       x: current.x + (Math.random() - 0.5) * 80,
       y: current.y + (Math.random() - 0.5) * 80,
-      vx: (Math.random() - 0.5) * 1.4,
-      vy: (Math.random() - 0.5) * 1.4,
+      vx: (Math.random() - 0.5) * 1.25,
+      vy: (Math.random() - 0.5) * 1.25,
       radius: Math.random() * 42 + 30,
-      alpha: 0.18,
-      decay: 0.0032,
+      alpha: 0.16,
+      decay: 0.003,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -383,22 +439,23 @@ function drawMist(current, last) {
 
 function drawWaves(current, last) {
   const color = randomColor();
+  addHandGlow(current, color);
 
   ribbons.push({
     x: current.x,
     y: current.y,
     radius: 18,
-    alpha: 0.68,
+    alpha: 0.42,
     color,
-    thickness: Math.random() * 5 + 3,
-    speed: 1.25
+    thickness: Math.random() * 4 + 2,
+    speed: 1.15
   });
 
   paintCtx.save();
   paintCtx.globalCompositeOperation = "source-over";
   paintCtx.strokeStyle = color;
   paintCtx.lineWidth = 13;
-  paintCtx.globalAlpha = 0.32;
+  paintCtx.globalAlpha = 0.28;
   paintCtx.lineCap = "round";
 
   paintCtx.beginPath();
@@ -412,35 +469,34 @@ function drawWaves(current, last) {
     current.y
   );
   paintCtx.stroke();
-
   paintCtx.restore();
 }
 
 function maybeSmallRing(x, y, color) {
-  if (Math.random() > 0.88) {
+  if (Math.random() > 0.92) {
     ribbons.push({
       x,
       y,
-      radius: Math.random() * 16 + 8,
-      alpha: 0.48,
+      radius: Math.random() * 14 + 8,
+      alpha: 0.28,
       color,
-      thickness: Math.random() * 4 + 2,
-      speed: 0.9
+      thickness: Math.random() * 3 + 1.5,
+      speed: 0.7
     });
   }
 }
 
-function createSoftDots(x, y, color, count = 6) {
+function createSoftDots(x, y, color, count = 4) {
   for (let i = 0; i < count; i++) {
     particles.push({
       type: "dot",
       x: x + (Math.random() - 0.5) * 42,
       y: y + (Math.random() - 0.5) * 42,
-      vx: (Math.random() - 0.5) * 2.4,
-      vy: (Math.random() - 0.5) * 2.4,
-      radius: Math.random() * 8 + 4,
-      alpha: 0.62,
-      decay: 0.012,
+      vx: (Math.random() - 0.5) * 2.1,
+      vy: (Math.random() - 0.5) * 2.1,
+      radius: Math.random() * 7 + 4,
+      alpha: 0.56,
+      decay: 0.011,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -451,15 +507,15 @@ function createSoftDots(x, y, color, count = 6) {
 function createOrganicBloom(x, y) {
   const bloomColors = colors;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 7; i++) {
     ribbons.push({
       x: x + (Math.random() - 0.5) * 360,
       y: y + (Math.random() - 0.5) * 240,
       radius: Math.random() * 42 + 32,
-      alpha: 0.82,
+      alpha: 0.42,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 10 + 4,
-      speed: 1.15
+      thickness: Math.random() * 6 + 2,
+      speed: 0.95
     });
   }
 
@@ -469,6 +525,8 @@ function createOrganicBloom(x, y) {
   if (currentMode === "flowers") createFlowerExplosion(x, y, bloomColors);
   if (currentMode === "mist") createMistExplosion(x, y, bloomColors);
   if (currentMode === "waves") createWaveExplosion(x, y, bloomColors);
+
+  playJumpSound();
 }
 
 function createPaintExplosion(x, y, bloomColors) {
@@ -477,7 +535,7 @@ function createPaintExplosion(x, y, bloomColors) {
 
     paintCtx.save();
     paintCtx.globalCompositeOperation = "source-over";
-    paintCtx.globalAlpha = 0.26;
+    paintCtx.globalAlpha = 0.24;
     paintCtx.fillStyle = color;
 
     paintCtx.beginPath();
@@ -491,11 +549,8 @@ function createPaintExplosion(x, y, bloomColors) {
       Math.PI * 2
     );
     paintCtx.fill();
-
     paintCtx.restore();
   }
-
-  createBrandLetters(x, y, 16);
 }
 
 function createBubbleExplosion(x, y, bloomColors) {
@@ -511,8 +566,8 @@ function createBubbleExplosion(x, y, bloomColors) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed - 1.5,
       radius: Math.random() * 48 + 18,
-      alpha: 0.86,
-      decay: 0.0048,
+      alpha: 0.82,
+      decay: 0.0046,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -533,8 +588,8 @@ function createStarExplosion(x, y, bloomColors) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: Math.random() * 18 + 9,
-      alpha: 0.92,
-      decay: 0.008,
+      alpha: 0.9,
+      decay: 0.0075,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -555,8 +610,8 @@ function createFlowerExplosion(x, y, bloomColors) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: Math.random() * 30 + 20,
-      alpha: 0.92,
-      decay: 0.0048,
+      alpha: 0.9,
+      decay: 0.0045,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
@@ -577,15 +632,13 @@ function createMistExplosion(x, y, bloomColors) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: Math.random() * 82 + 38,
-      alpha: 0.24,
+      alpha: 0.22,
       decay: 0.0028,
       color,
       rotation: Math.random() * Math.PI,
       grow: 1
     });
   }
-
-  createBrandLetters(x, y, 12);
 }
 
 function createWaveExplosion(x, y, bloomColors) {
@@ -594,38 +647,10 @@ function createWaveExplosion(x, y, bloomColors) {
       x: x + (Math.random() - 0.5) * 760,
       y: y + (Math.random() - 0.5) * 520,
       radius: Math.random() * 58 + 34,
-      alpha: 0.85,
+      alpha: 0.5,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 13 + 5,
-      speed: 1.45
-    });
-  }
-
-  createBrandLetters(x, y, 22);
-}
-
-function createBrandLetters(x, y, count) {
-  const letters = ["B", "R", "O", "N", "X"];
-
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 15 + 8;
-
-    particles.push({
-      type: "letter",
-      letter: letters[Math.floor(Math.random() * letters.length)],
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: Math.random() * 36 + 34,
-      maxRadius: Math.random() * 95 + 80,
-      alpha: 0.92,
-      decay: 0.0042,
-      color: randomColor(),
-      rotation: (Math.random() - 0.5) * 1.6,
-      rotationSpeed: (Math.random() - 0.5) * 0.03,
-      grow: Math.random() * 1.8 + 1.2
+      thickness: Math.random() * 8 + 3,
+      speed: 1.2
     });
   }
 }
@@ -670,20 +695,6 @@ function drawFlowerShape(ctx, x, y, radius, color, alpha, rotation) {
   ctx.beginPath();
   ctx.arc(0, 0, radius * 0.18, 0, Math.PI * 2);
   ctx.fill();
-
-  ctx.restore();
-}
-
-function drawLetter(ctx, p) {
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation);
-  ctx.globalAlpha = p.alpha;
-  ctx.fillStyle = p.color;
-  ctx.font = `900 ${p.radius * 2}px Arial Black, Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(p.letter, 0, 0);
   ctx.restore();
 }
 
@@ -698,23 +709,10 @@ function updateParticles() {
     p.vx *= dragAmount;
     p.vy *= dragAmount;
 
-    if (p.grow) {
-      if (p.type === "letter") {
-        p.radius = Math.min(p.maxRadius, p.radius + p.grow);
-      } else {
-        p.radius += p.grow * 0.08;
-      }
-    }
-
-    if (p.rotationSpeed) {
-      p.rotation += p.rotationSpeed;
-    }
+    if (p.grow) p.radius += p.grow * 0.08;
+    if (p.type === "bubble") p.y -= 0.18;
 
     p.alpha -= p.decay;
-
-    if (p.type === "bubble") {
-      p.y -= 0.18;
-    }
 
     fxCtx.save();
     fxCtx.globalCompositeOperation = "source-over";
@@ -727,7 +725,7 @@ function updateParticles() {
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.stroke();
 
-      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.12);
+      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.1);
       fxCtx.fillStyle = p.color;
       fxCtx.fill();
     } else if (p.type === "star") {
@@ -736,12 +734,10 @@ function updateParticles() {
       drawFlowerShape(fxCtx, p.x, p.y, p.radius, p.color, p.alpha, p.rotation);
     } else if (p.type === "mist") {
       fxCtx.fillStyle = p.color;
-      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.85);
+      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.8);
       fxCtx.beginPath();
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.fill();
-    } else if (p.type === "letter") {
-      drawLetter(fxCtx, p);
     } else {
       fxCtx.fillStyle = p.color;
       fxCtx.beginPath();
@@ -751,37 +747,94 @@ function updateParticles() {
 
     fxCtx.restore();
 
-    if (p.alpha <= 0) {
-      particles.splice(i, 1);
-    }
+    if (p.alpha <= 0) particles.splice(i, 1);
   }
 
   updateRibbons();
+  updateHandGlows();
+  updateResetWipe();
 }
 
 function updateRibbons() {
   for (let i = ribbons.length - 1; i >= 0; i--) {
     const r = ribbons[i];
 
-    r.alpha -= 0.0042;
-    r.radius += r.speed || 1.2;
+    r.alpha -= 0.0036;
+    r.radius += r.speed || 1;
 
     fxCtx.save();
     fxCtx.globalCompositeOperation = "source-over";
     fxCtx.globalAlpha = Math.max(0, r.alpha);
     fxCtx.strokeStyle = r.color;
-    fxCtx.lineWidth = r.thickness || 4;
+    fxCtx.lineWidth = r.thickness || 3;
 
     fxCtx.beginPath();
     fxCtx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
     fxCtx.stroke();
-
     fxCtx.restore();
 
-    if (r.alpha <= 0) {
-      ribbons.splice(i, 1);
-    }
+    if (r.alpha <= 0) ribbons.splice(i, 1);
   }
+}
+
+function updateHandGlows() {
+  for (let i = handGlows.length - 1; i >= 0; i--) {
+    const g = handGlows[i];
+
+    g.radius += 1.8;
+    g.alpha -= 0.026;
+
+    fxCtx.save();
+    fxCtx.globalCompositeOperation = "source-over";
+
+    const gradient = fxCtx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.radius);
+    gradient.addColorStop(0, hexToRgba(g.color, g.alpha));
+    gradient.addColorStop(1, hexToRgba(g.color, 0));
+
+    fxCtx.fillStyle = gradient;
+    fxCtx.beginPath();
+    fxCtx.arc(g.x, g.y, g.radius, 0, Math.PI * 2);
+    fxCtx.fill();
+    fxCtx.restore();
+
+    if (g.alpha <= 0) handGlows.splice(i, 1);
+  }
+}
+
+function updateResetWipe() {
+  if (!resetWipe) return;
+
+  resetWipe.radius += 60;
+  resetWipe.alpha -= 0.035;
+
+  fxCtx.save();
+  fxCtx.globalCompositeOperation = "source-over";
+  fxCtx.globalAlpha = Math.max(0, resetWipe.alpha);
+  fxCtx.fillStyle = BRAND.white;
+
+  fxCtx.beginPath();
+  fxCtx.arc(
+    window.innerWidth / 2,
+    window.innerHeight / 2,
+    resetWipe.radius,
+    0,
+    Math.PI * 2
+  );
+  fxCtx.fill();
+  fxCtx.restore();
+
+  if (resetWipe.radius > resetWipe.maxRadius || resetWipe.alpha <= 0) {
+    finishClearScreen();
+    resetWipe = null;
+  }
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function detectJump(leftShoulder, rightShoulder) {
@@ -798,76 +851,77 @@ function detectJump(leftShoulder, rightShoulder) {
     jumpCooldown--;
   }
 
-  if (movement > 30 && jumpCooldown <= 0) {
+  if (movement > jumpSensitivity && jumpCooldown <= 0) {
     createOrganicBloom(window.innerWidth / 2, window.innerHeight * 0.55);
-    jumpCooldown = 70;
+    jumpCooldown = 85;
   }
 
   previousShoulderY = shoulderY;
+}
+
+function updateCooldownBadge() {
+  if (jumpCooldown > 0) {
+    cooldownBadge.textContent = "Bloom recharging";
+    cooldownBadge.classList.add("cooling");
+  } else {
+    cooldownBadge.textContent = "Ready to bloom";
+    cooldownBadge.classList.remove("cooling");
+  }
 }
 
 function drawAttractMode() {
   const t = Date.now() * 0.001;
 
   if (Math.random() > 0.94) {
-    floatingLetters.push({
-      letter: ["B", "R", "O", "N", "X"][Math.floor(Math.random() * 5)],
-      x: Math.random() * window.innerWidth,
-      y: window.innerHeight + 90,
-      vx: (Math.random() - 0.5) * 0.8,
-      vy: -Math.random() * 1.2 - 0.4,
-      size: Math.random() * 52 + 42,
-      color: randomColor(),
-      alpha: 0.5,
-      rotation: (Math.random() - 0.5) * 0.8
-    });
-  }
+    const typeRoll = Math.random();
+    const color = randomColor();
 
-  for (let i = floatingLetters.length - 1; i >= 0; i--) {
-    const l = floatingLetters[i];
-
-    l.x += l.vx + Math.sin(t + i) * 0.22;
-    l.y += l.vy;
-    l.size += 0.04;
-    l.alpha -= 0.0012;
-
-    uiCtx.save();
-    uiCtx.translate(l.x, l.y);
-    uiCtx.rotate(l.rotation + Math.sin(t + i) * 0.1);
-    uiCtx.globalAlpha = Math.max(0, l.alpha);
-    uiCtx.fillStyle = l.color;
-    uiCtx.font = `900 ${l.size}px Arial Black, Arial`;
-    uiCtx.textAlign = "center";
-    uiCtx.textBaseline = "middle";
-    uiCtx.fillText(l.letter, 0, 0);
-    uiCtx.restore();
-
-    if (l.alpha <= 0 || l.y < -130) {
-      floatingLetters.splice(i, 1);
+    if (typeRoll < 0.42) {
+      particles.push({
+        type: "bubble",
+        x: Math.random() * window.innerWidth,
+        y: window.innerHeight + 40,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: -Math.random() * 0.8 - 0.25,
+        radius: Math.random() * 22 + 14,
+        alpha: 0.34,
+        decay: 0.0026,
+        color,
+        rotation: 0,
+        grow: 1
+      });
+    } else if (typeRoll < 0.72) {
+      ribbons.push({
+        x: Math.random() * window.innerWidth,
+        y: window.innerHeight * (0.35 + Math.random() * 0.4),
+        radius: Math.random() * 32 + 20,
+        alpha: 0.18,
+        color,
+        thickness: Math.random() * 3 + 1.5,
+        speed: 0.42
+      });
+    } else {
+      createSoftDots(
+        Math.random() * window.innerWidth,
+        window.innerHeight * (0.25 + Math.random() * 0.5),
+        color,
+        1
+      );
     }
   }
-}
-
-function drawSoftBackgroundMotion() {
-  const time = Date.now() * 0.00035;
 
   uiCtx.save();
-  uiCtx.globalCompositeOperation = "source-over";
-  uiCtx.globalAlpha = noPoseFrames > 40 ? 0.018 : 0.022;
-
-  for (let i = 0; i < 5; i++) {
-    uiCtx.fillStyle = colors[i % colors.length];
-    uiCtx.beginPath();
-    uiCtx.arc(
-      window.innerWidth * (0.12 + i * 0.2),
-      window.innerHeight * (0.22 + Math.sin(time + i) * 0.08),
-      70 + Math.sin(time * 2 + i) * 18,
-      0,
-      Math.PI * 2
-    );
-    uiCtx.fill();
-  }
-
+  uiCtx.globalAlpha = 0.018;
+  uiCtx.fillStyle = colors[Math.floor((t * 0.5) % colors.length)];
+  uiCtx.beginPath();
+  uiCtx.arc(
+    window.innerWidth * (0.5 + Math.sin(t * 0.25) * 0.25),
+    window.innerHeight * (0.5 + Math.cos(t * 0.22) * 0.16),
+    120,
+    0,
+    Math.PI * 2
+  );
+  uiCtx.fill();
   uiCtx.restore();
 }
 
@@ -887,6 +941,7 @@ async function gameLoop() {
 
   fadePaintCanvas();
   handleAutoRotate();
+  updateCooldownBadge();
 
   uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
@@ -907,7 +962,7 @@ async function gameLoop() {
 
     if (leftWrist && leftWrist.score > 0.25) {
       const rawLeft = videoToCanvasPoint(leftWrist);
-      smoothLeftHand = smoothPoint(smoothLeftHand, rawLeft, 0.22);
+      smoothLeftHand = smoothPoint(smoothLeftHand, rawLeft);
       drawHandEffect(smoothLeftHand, lastLeftHand);
       lastLeftHand = smoothLeftHand;
       detected = true;
@@ -918,7 +973,7 @@ async function gameLoop() {
 
     if (rightWrist && rightWrist.score > 0.25) {
       const rawRight = videoToCanvasPoint(rightWrist);
-      smoothRightHand = smoothPoint(smoothRightHand, rawRight, 0.22);
+      smoothRightHand = smoothPoint(smoothRightHand, rawRight);
       drawHandEffect(smoothRightHand, lastRightHand);
       lastRightHand = smoothRightHand;
       detected = true;
@@ -949,13 +1004,61 @@ async function gameLoop() {
   }
 
   updateParticles();
-  drawSoftBackgroundMotion();
 
   if (noPoseFrames > 40) {
     drawAttractMode();
   }
 
   requestAnimationFrame(gameLoop);
+}
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playChime(freq = 440, duration = 0.08, type = "sine") {
+  if (!soundEnabled) return;
+  initAudio();
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = type;
+  osc.frequency.value = freq;
+
+  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.045, audioCtx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+let lastMoveSound = 0;
+
+function playMovementSound(speed) {
+  if (!soundEnabled) return;
+
+  const now = Date.now();
+  if (now - lastMoveSound < 160) return;
+
+  const freq = Math.min(680, 260 + speed * 8);
+  playChime(freq, 0.045, "sine");
+
+  lastMoveSound = now;
+}
+
+function playJumpSound() {
+  if (!soundEnabled) return;
+
+  playChime(420, 0.1, "triangle");
+  setTimeout(() => playChime(580, 0.12, "sine"), 90);
+  setTimeout(() => playChime(720, 0.1, "sine"), 170);
 }
 
 startBtn.addEventListener("click", async () => {
@@ -976,7 +1079,7 @@ startBtn.addEventListener("click", async () => {
       instruction.classList.add("fadeOut");
     }, 3500);
 
-    clearScreen();
+    finishClearScreen();
     gameLoop();
   } catch (err) {
     console.error(err);
@@ -996,12 +1099,27 @@ document.querySelectorAll("#staffPanel button[data-mode]").forEach(button => {
   });
 });
 
-clearBtn.addEventListener("click", clearScreen);
+clearBtn.addEventListener("click", clearScreenAnimated);
 
 autoBtn.addEventListener("click", () => {
   autoRotate = !autoRotate;
   autoBtn.textContent = autoRotate ? "Auto: On" : "Auto: Off";
   lastAutoRotateTime = Date.now();
+});
+
+soundBtn.addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  soundBtn.textContent = soundEnabled ? "Sound: On" : "Sound: Off";
+
+  if (soundEnabled) {
+    initAudio();
+    playChime(520, 0.08, "sine");
+  }
+});
+
+hideBtn.addEventListener("click", () => {
+  controlsHidden = !controlsHidden;
+  staffPanel.classList.toggle("hidden", controlsHidden);
 });
 
 document.addEventListener("keydown", event => {
@@ -1014,12 +1132,26 @@ document.addEventListener("keydown", event => {
   if (key === "5") setMode("mist");
   if (key === "6") setMode("waves");
 
-  if (key === "c") clearScreen();
+  if (key === "c") clearScreenAnimated();
 
   if (key === "a") {
     autoRotate = !autoRotate;
     autoBtn.textContent = autoRotate ? "Auto: On" : "Auto: Off";
     lastAutoRotateTime = Date.now();
+  }
+
+  if (key === "s") {
+    soundEnabled = !soundEnabled;
+    soundBtn.textContent = soundEnabled ? "Sound: On" : "Sound: Off";
+    if (soundEnabled) {
+      initAudio();
+      playChime(520, 0.08, "sine");
+    }
+  }
+
+  if (key === "h") {
+    controlsHidden = !controlsHidden;
+    staffPanel.classList.toggle("hidden", controlsHidden);
   }
 
   if (key === "f") {
