@@ -1,9 +1,12 @@
 const video = document.getElementById("video");
+
 const paintCanvas = document.getElementById("paintCanvas");
 const fxCanvas = document.getElementById("fxCanvas");
+const uiCanvas = document.getElementById("uiCanvas");
 
 const paintCtx = paintCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
+const uiCtx = uiCanvas.getContext("2d");
 
 const splash = document.getElementById("splash");
 const game = document.getElementById("game");
@@ -12,36 +15,73 @@ const cameraSelect = document.getElementById("cameraSelect");
 const modeSelect = document.getElementById("modeSelect");
 const instruction = document.getElementById("instruction");
 const topTitle = document.getElementById("topTitle");
+const clearBtn = document.getElementById("clearBtn");
+const autoBtn = document.getElementById("autoBtn");
+const modeBadge = document.getElementById("modeBadge");
 
 let detector = null;
 let currentStream = null;
 let running = false;
+
 let currentMode = "paint";
+let autoRotate = false;
+let lastAutoRotateTime = 0;
+const autoRotateInterval = 30000;
 
 let lastLeftHand = null;
 let lastRightHand = null;
+let smoothLeftHand = null;
+let smoothRightHand = null;
 
 let particles = [];
 let ribbons = [];
+let floatingLetters = [];
 
 let previousShoulderY = null;
 let jumpCooldown = 0;
+let noPoseFrames = 0;
+
+const BRAND = {
+  yellow: "#ffd100",
+  orange: "#f26522",
+  blue: "#00aeef",
+  purple: "#3b2483",
+  magenta: "#a6208f",
+  green: "#39b54a",
+  white: "#ffffff"
+};
 
 const colors = [
-  "#ff6b35",
-  "#ffd54f",
-  "#00b2a9",
-  "#7bdff2",
-  "#f15bb5",
-  "#102f52"
+  BRAND.yellow,
+  BRAND.orange,
+  BRAND.blue,
+  BRAND.purple,
+  BRAND.magenta,
+  BRAND.green
+];
+
+const modes = [
+  { id: "paint", label: "Paint Trails" },
+  { id: "bubbles", label: "Bubbles" },
+  { id: "stars", label: "Stars" },
+  { id: "flowers", label: "Flowers" },
+  { id: "mist", label: "Graffiti Mist" },
+  { id: "waves", label: "Bronx Color Waves" }
 ];
 
 function resizeCanvases() {
-  paintCanvas.width = window.innerWidth;
-  paintCanvas.height = window.innerHeight;
+  const dpr = window.devicePixelRatio || 1;
 
-  fxCanvas.width = window.innerWidth;
-  fxCanvas.height = window.innerHeight;
+  [paintCanvas, fxCanvas, uiCanvas].forEach(canvas => {
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + "px";
+    canvas.style.height = window.innerHeight + "px";
+  });
+
+  [paintCtx, fxCtx, uiCtx].forEach(ctx => {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  });
 }
 
 window.addEventListener("resize", resizeCanvases);
@@ -148,16 +188,52 @@ function videoToCanvasPoint(point) {
   };
 }
 
+function smoothPoint(previous, current, amount = 0.28) {
+  if (!previous) return current;
+
+  return {
+    x: previous.x + (current.x - previous.x) * amount,
+    y: previous.y + (current.y - previous.y) * amount
+  };
+}
+
 function randomColor() {
   return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function clearScreen() {
+  paintCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  particles = [];
+  ribbons = [];
 }
 
 function fadePaintCanvas() {
   paintCtx.save();
   paintCtx.globalCompositeOperation = "source-over";
-  paintCtx.fillStyle = "rgba(255, 255, 255, 0.018)";
-  paintCtx.fillRect(0, 0, paintCanvas.width, paintCanvas.height);
+  paintCtx.fillStyle = "rgba(255, 255, 255, 0.012)";
+  paintCtx.fillRect(0, 0, window.innerWidth, window.innerHeight);
   paintCtx.restore();
+}
+
+function setMode(modeId) {
+  currentMode = modeId;
+  modeSelect.value = modeId;
+
+  const mode = modes.find(m => m.id === modeId);
+  modeBadge.textContent = mode ? mode.label : modeId;
+  modeBadge.classList.add("show");
+
+  setTimeout(() => {
+    modeBadge.classList.remove("show");
+  }, 1400);
+}
+
+function nextMode() {
+  const index = modes.findIndex(m => m.id === currentMode);
+  const next = modes[(index + 1) % modes.length];
+  setMode(next.id);
 }
 
 function drawHandEffect(current, last) {
@@ -173,46 +249,51 @@ function drawHandEffect(current, last) {
 
 function drawPaintTrail(current, last) {
   const speed = Math.hypot(current.x - last.x, current.y - last.y);
-  const width = Math.min(58, Math.max(16, speed * 0.35));
+  const width = Math.min(72, Math.max(18, speed * 0.45));
   const color = randomColor();
 
   paintCtx.save();
   paintCtx.globalCompositeOperation = "multiply";
   paintCtx.lineCap = "round";
   paintCtx.lineJoin = "round";
-  paintCtx.shadowBlur = 26;
+  paintCtx.shadowBlur = 18;
   paintCtx.shadowColor = color;
   paintCtx.strokeStyle = color;
+  paintCtx.globalAlpha = 0.72;
   paintCtx.lineWidth = width;
 
   paintCtx.beginPath();
   paintCtx.moveTo(last.x, last.y);
   paintCtx.quadraticCurveTo(
-    (last.x + current.x) / 2,
-    (last.y + current.y) / 2 - 20,
+    last.x * 0.5 + current.x * 0.5,
+    last.y * 0.5 + current.y * 0.5,
     current.x,
     current.y
   );
   paintCtx.stroke();
+
   paintCtx.restore();
 
-  createSparkles(current.x, current.y, color, speed > 35 ? 8 : 3);
+  if (speed > 22) {
+    createSoftDots(current.x, current.y, color, 4);
+  }
 }
 
 function drawBubbles(current, last) {
   const color = randomColor();
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     particles.push({
       type: "bubble",
-      x: current.x + (Math.random() - 0.5) * 40,
-      y: current.y + (Math.random() - 0.5) * 40,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: -Math.random() * 2.2 - 0.5,
-      radius: Math.random() * 24 + 12,
-      alpha: 0.75,
-      decay: 0.008,
-      color
+      x: current.x + (Math.random() - 0.5) * 26,
+      y: current.y + (Math.random() - 0.5) * 26,
+      vx: (Math.random() - 0.5) * 0.9,
+      vy: -Math.random() * 1.3 - 0.3,
+      radius: Math.random() * 22 + 14,
+      alpha: 0.72,
+      decay: 0.0048,
+      color,
+      rotation: Math.random() * Math.PI
     });
   }
 
@@ -222,16 +303,16 @@ function drawBubbles(current, last) {
 function drawStars(current, last) {
   const color = randomColor();
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     particles.push({
       type: "star",
-      x: current.x + (Math.random() - 0.5) * 36,
-      y: current.y + (Math.random() - 0.5) * 36,
-      vx: (Math.random() - 0.5) * 4,
-      vy: (Math.random() - 0.5) * 4,
-      radius: Math.random() * 10 + 7,
-      alpha: 1,
-      decay: 0.018,
+      x: current.x + (Math.random() - 0.5) * 34,
+      y: current.y + (Math.random() - 0.5) * 34,
+      vx: (Math.random() - 0.5) * 2.2,
+      vy: (Math.random() - 0.5) * 2.2,
+      radius: Math.random() * 10 + 8,
+      alpha: 0.95,
+      decay: 0.01,
       color,
       rotation: Math.random() * Math.PI
     });
@@ -242,8 +323,7 @@ function drawStars(current, last) {
 
 function drawFlowers(current, last) {
   const speed = Math.hypot(current.x - last.x, current.y - last.y);
-
-  if (speed < 10 && Math.random() > 0.35) return;
+  if (speed < 8 && Math.random() > 0.3) return;
 
   const color = randomColor();
 
@@ -251,11 +331,11 @@ function drawFlowers(current, last) {
     type: "flower",
     x: current.x,
     y: current.y,
-    vx: 0,
-    vy: 0,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: (Math.random() - 0.5) * 0.4,
     radius: Math.random() * 18 + 18,
-    alpha: 0.95,
-    decay: 0.006,
+    alpha: 0.9,
+    decay: 0.0035,
     color,
     rotation: Math.random() * Math.PI
   });
@@ -266,17 +346,18 @@ function drawFlowers(current, last) {
 function drawMist(current, last) {
   const color = randomColor();
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     particles.push({
       type: "mist",
-      x: current.x + (Math.random() - 0.5) * 60,
-      y: current.y + (Math.random() - 0.5) * 60,
-      vx: (Math.random() - 0.5) * 2.2,
-      vy: (Math.random() - 0.5) * 2.2,
-      radius: Math.random() * 34 + 20,
-      alpha: 0.32,
-      decay: 0.006,
-      color
+      x: current.x + (Math.random() - 0.5) * 52,
+      y: current.y + (Math.random() - 0.5) * 52,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: (Math.random() - 0.5) * 1.4,
+      radius: Math.random() * 42 + 30,
+      alpha: 0.22,
+      decay: 0.0032,
+      color,
+      rotation: Math.random() * Math.PI
     });
   }
 
@@ -290,120 +371,104 @@ function drawWaves(current, last) {
     x: current.x,
     y: current.y,
     radius: 18,
-    alpha: 0.9,
+    alpha: 0.82,
     color,
-    thickness: Math.random() * 5 + 3
+    thickness: Math.random() * 5 + 3,
+    speed: 1.25
   });
 
   paintCtx.save();
   paintCtx.globalCompositeOperation = "multiply";
   paintCtx.strokeStyle = color;
-  paintCtx.lineWidth = 12;
-  paintCtx.globalAlpha = 0.35;
+  paintCtx.lineWidth = 13;
+  paintCtx.globalAlpha = 0.34;
+  paintCtx.lineCap = "round";
+
   paintCtx.beginPath();
   paintCtx.moveTo(last.x, last.y);
   paintCtx.bezierCurveTo(
-    last.x + 80,
+    last.x + 90,
     last.y - 80,
-    current.x - 80,
+    current.x - 90,
     current.y + 80,
     current.x,
     current.y
   );
   paintCtx.stroke();
+
   paintCtx.restore();
 }
 
 function maybeSmallRing(x, y, color) {
-  if (Math.random() > 0.82) {
+  if (Math.random() > 0.88) {
     ribbons.push({
       x,
       y,
-      radius: Math.random() * 18 + 8,
-      alpha: 0.7,
+      radius: Math.random() * 16 + 8,
+      alpha: 0.56,
       color,
-      thickness: Math.random() * 4 + 2
+      thickness: Math.random() * 4 + 2,
+      speed: 0.9
     });
   }
 }
 
-function createSparkles(x, y, color, count = 8) {
+function createSoftDots(x, y, color, count = 6) {
   for (let i = 0; i < count; i++) {
     particles.push({
       type: "dot",
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 7,
-      vy: (Math.random() - 0.5) * 7,
-      radius: Math.random() * 7 + 3,
-      alpha: 1,
-      decay: Math.random() * 0.025 + 0.015,
-      color
+      x: x + (Math.random() - 0.5) * 28,
+      y: y + (Math.random() - 0.5) * 28,
+      vx: (Math.random() - 0.5) * 2.4,
+      vy: (Math.random() - 0.5) * 2.4,
+      radius: Math.random() * 8 + 4,
+      alpha: 0.82,
+      decay: 0.012,
+      color,
+      rotation: Math.random() * Math.PI
     });
   }
 }
 
 function createOrganicBloom(x, y) {
-  const bloomColors = ["#ff6b35", "#ffd54f", "#00b2a9", "#f15bb5", "#7bdff2"];
+  const bloomColors = colors;
 
-  // Always include rings, but now they are secondary/supporting,
-  // not the main explosion for every mode.
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     ribbons.push({
-      x: x + (Math.random() - 0.5) * 260,
-      y: y + (Math.random() - 0.5) * 180,
-      radius: Math.random() * 35 + 25,
+      x: x + (Math.random() - 0.5) * 300,
+      y: y + (Math.random() - 0.5) * 200,
+      radius: Math.random() * 40 + 28,
       alpha: 1,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 9 + 4
+      thickness: Math.random() * 10 + 4,
+      speed: 1.15
     });
   }
 
-  if (currentMode === "paint") {
-    createPaintExplosion(x, y, bloomColors);
-    return;
-  }
-
-  if (currentMode === "bubbles") {
-    createBubbleExplosion(x, y, bloomColors);
-    return;
-  }
-
-  if (currentMode === "stars") {
-    createStarExplosion(x, y, bloomColors);
-    return;
-  }
-
-  if (currentMode === "flowers") {
-    createFlowerExplosion(x, y, bloomColors);
-    return;
-  }
-
-  if (currentMode === "mist") {
-    createMistExplosion(x, y, bloomColors);
-    return;
-  }
-
-  if (currentMode === "waves") {
-    createWaveExplosion(x, y, bloomColors);
-    return;
-  }
+  if (currentMode === "paint") createPaintExplosion(x, y, bloomColors);
+  if (currentMode === "bubbles") createBubbleExplosion(x, y, bloomColors);
+  if (currentMode === "stars") createStarExplosion(x, y, bloomColors);
+  if (currentMode === "flowers") createFlowerExplosion(x, y, bloomColors);
+  if (currentMode === "mist") createMistExplosion(x, y, bloomColors);
+  if (currentMode === "waves") createWaveExplosion(x, y, bloomColors);
 }
 
 function createPaintExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 34; i++) {
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     paintCtx.save();
     paintCtx.globalCompositeOperation = "multiply";
-    paintCtx.globalAlpha = 0.34;
+    paintCtx.globalAlpha = 0.32;
     paintCtx.fillStyle = color;
 
     paintCtx.beginPath();
-    paintCtx.arc(
-      x + (Math.random() - 0.5) * 500,
-      y + (Math.random() - 0.5) * 340,
-      Math.random() * 92 + 34,
+    paintCtx.ellipse(
+      x + (Math.random() - 0.5) * 620,
+      y + (Math.random() - 0.5) * 360,
+      Math.random() * 110 + 40,
+      Math.random() * 60 + 24,
+      Math.random() * Math.PI,
       0,
       Math.PI * 2
     );
@@ -412,13 +477,13 @@ function createPaintExplosion(x, y, bloomColors) {
     paintCtx.restore();
   }
 
-  createSparkles(x, y, randomColor(), 70);
+  createBrandLetters(x, y, 12);
 }
 
 function createBubbleExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 110; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 8 + 2;
+    const speed = Math.random() * 7 + 1.5;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -427,18 +492,19 @@ function createBubbleExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed - 1.5,
-      radius: Math.random() * 42 + 16,
-      alpha: 0.95,
-      decay: 0.006,
-      color
+      radius: Math.random() * 46 + 18,
+      alpha: 0.92,
+      decay: 0.0048,
+      color,
+      rotation: Math.random() * Math.PI
     });
   }
 }
 
 function createStarExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 105; i++) {
+  for (let i = 0; i < 120; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 11 + 3;
+    const speed = Math.random() * 9 + 2.5;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -447,9 +513,9 @@ function createStarExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 18 + 8,
+      radius: Math.random() * 18 + 9,
       alpha: 1,
-      decay: 0.01,
+      decay: 0.008,
       color,
       rotation: Math.random() * Math.PI
     });
@@ -457,9 +523,9 @@ function createStarExplosion(x, y, bloomColors) {
 }
 
 function createFlowerExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 85; i++) {
+  for (let i = 0; i < 95; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 7 + 2;
+    const speed = Math.random() * 6 + 1.5;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -468,9 +534,9 @@ function createFlowerExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 26 + 16,
+      radius: Math.random() * 28 + 18,
       alpha: 1,
-      decay: 0.006,
+      decay: 0.0048,
       color,
       rotation: Math.random() * Math.PI
     });
@@ -478,9 +544,9 @@ function createFlowerExplosion(x, y, bloomColors) {
 }
 
 function createMistExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 160; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 5 + 1;
+    const speed = Math.random() * 4.5 + 0.8;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -489,33 +555,50 @@ function createMistExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 62 + 30,
-      alpha: 0.4,
-      decay: 0.004,
-      color
+      radius: Math.random() * 72 + 34,
+      alpha: 0.32,
+      decay: 0.0028,
+      color,
+      rotation: Math.random() * Math.PI
     });
   }
+
+  createBrandLetters(x, y, 8);
 }
 
 function createWaveExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 34; i++) {
     ribbons.push({
-      x: x + (Math.random() - 0.5) * 540,
-      y: y + (Math.random() - 0.5) * 360,
-      radius: Math.random() * 50 + 30,
+      x: x + (Math.random() - 0.5) * 660,
+      y: y + (Math.random() - 0.5) * 420,
+      radius: Math.random() * 58 + 34,
       alpha: 1,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 12 + 5
+      thickness: Math.random() * 13 + 5,
+      speed: 1.45
     });
   }
 
-  for (let i = 0; i < 60; i++) {
-    createSparkles(
-      x + (Math.random() - 0.5) * 440,
-      y + (Math.random() - 0.5) * 300,
-      bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      1
-    );
+  createBrandLetters(x, y, 16);
+}
+
+function createBrandLetters(x, y, count) {
+  const letters = ["B", "R", "O", "N", "X"];
+
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      type: "letter",
+      letter: letters[Math.floor(Math.random() * letters.length)],
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      radius: Math.random() * 26 + 24,
+      alpha: 0.95,
+      decay: 0.006,
+      color: randomColor(),
+      rotation: (Math.random() - 0.5) * 1.4
+    });
   }
 }
 
@@ -551,11 +634,11 @@ function drawFlowerShape(ctx, x, y, radius, color, alpha, rotation) {
     const py = Math.sin(angle) * radius * 0.45;
 
     ctx.beginPath();
-    ctx.ellipse(px, py, radius * 0.32, radius * 0.18, angle, 0, Math.PI * 2);
+    ctx.ellipse(px, py, radius * 0.34, radius * 0.19, angle, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = BRAND.white;
   ctx.beginPath();
   ctx.arc(0, 0, radius * 0.18, 0, Math.PI * 2);
   ctx.fill();
@@ -563,17 +646,34 @@ function drawFlowerShape(ctx, x, y, radius, color, alpha, rotation) {
   ctx.restore();
 }
 
+function drawLetter(ctx, p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rotation);
+  ctx.globalAlpha = p.alpha;
+  ctx.fillStyle = p.color;
+  ctx.font = `900 ${p.radius * 2}px Arial Black, Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(p.letter, 0, 0);
+  ctx.restore();
+}
+
 function updateParticles() {
-  fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
 
     p.x += p.vx;
     p.y += p.vy;
-    p.vx *= 0.965;
-    p.vy *= 0.965;
+    p.vx *= 0.972;
+    p.vy *= 0.972;
     p.alpha -= p.decay;
+
+    if (p.type === "bubble") {
+      p.y -= 0.18;
+    }
 
     fxCtx.save();
     fxCtx.globalCompositeOperation = "multiply";
@@ -586,7 +686,7 @@ function updateParticles() {
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.stroke();
 
-      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.25);
+      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.18);
       fxCtx.fillStyle = p.color;
       fxCtx.fill();
     } else if (p.type === "star") {
@@ -598,6 +698,8 @@ function updateParticles() {
       fxCtx.beginPath();
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.fill();
+    } else if (p.type === "letter") {
+      drawLetter(fxCtx, p);
     } else {
       fxCtx.fillStyle = p.color;
       fxCtx.beginPath();
@@ -619,8 +721,8 @@ function updateRibbons() {
   for (let i = ribbons.length - 1; i >= 0; i--) {
     const r = ribbons[i];
 
-    r.alpha -= 0.006;
-    r.radius += 1.65;
+    r.alpha -= 0.0046;
+    r.radius += r.speed || 1.2;
 
     fxCtx.save();
     fxCtx.globalCompositeOperation = "multiply";
@@ -654,41 +756,115 @@ function detectJump(leftShoulder, rightShoulder) {
     jumpCooldown--;
   }
 
-  if (movement > 32 && jumpCooldown <= 0) {
+  if (movement > 30 && jumpCooldown <= 0) {
     createOrganicBloom(window.innerWidth / 2, window.innerHeight * 0.55);
-    jumpCooldown = 65;
+    jumpCooldown = 70;
   }
 
   previousShoulderY = shoulderY;
 }
 
+function drawAttractMode() {
+  const t = Date.now() * 0.001;
+
+  if (Math.random() > 0.92) {
+    floatingLetters.push({
+      letter: ["B", "R", "O", "N", "X"][Math.floor(Math.random() * 5)],
+      x: Math.random() * window.innerWidth,
+      y: window.innerHeight + 60,
+      vx: (Math.random() - 0.5) * 0.6,
+      vy: -Math.random() * 1.2 - 0.4,
+      size: Math.random() * 42 + 32,
+      color: randomColor(),
+      alpha: 0.55,
+      rotation: (Math.random() - 0.5) * 0.8
+    });
+  }
+
+  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  for (let i = floatingLetters.length - 1; i >= 0; i--) {
+    const l = floatingLetters[i];
+
+    l.x += l.vx + Math.sin(t + i) * 0.2;
+    l.y += l.vy;
+    l.alpha -= 0.0012;
+
+    uiCtx.save();
+    uiCtx.translate(l.x, l.y);
+    uiCtx.rotate(l.rotation + Math.sin(t + i) * 0.1);
+    uiCtx.globalAlpha = Math.max(0, l.alpha);
+    uiCtx.fillStyle = l.color;
+    uiCtx.font = `900 ${l.size}px Arial Black, Arial`;
+    uiCtx.textAlign = "center";
+    uiCtx.textBaseline = "middle";
+    uiCtx.fillText(l.letter, 0, 0);
+    uiCtx.restore();
+
+    if (l.alpha <= 0 || l.y < -100) {
+      floatingLetters.splice(i, 1);
+    }
+  }
+
+  uiCtx.save();
+  uiCtx.globalAlpha = 0.035;
+  uiCtx.globalCompositeOperation = "multiply";
+
+  for (let i = 0; i < 6; i++) {
+    uiCtx.fillStyle = colors[i % colors.length];
+    uiCtx.beginPath();
+    uiCtx.arc(
+      window.innerWidth * (0.12 + i * 0.16),
+      window.innerHeight * (0.45 + Math.sin(t * 0.55 + i) * 0.18),
+      90 + Math.sin(t + i) * 20,
+      0,
+      Math.PI * 2
+    );
+    uiCtx.fill();
+  }
+
+  uiCtx.restore();
+}
+
 function drawSoftBackgroundMotion() {
   const time = Date.now() * 0.00035;
 
-  fxCtx.save();
-  fxCtx.globalCompositeOperation = "multiply";
-  fxCtx.globalAlpha = 0.035;
-
-  const bgColors = ["#ffd54f", "#00b2a9", "#ff6b35"];
+  uiCtx.save();
+  uiCtx.globalCompositeOperation = "multiply";
+  uiCtx.globalAlpha = noPoseFrames > 40 ? 0.02 : 0.026;
 
   for (let i = 0; i < 5; i++) {
     const x = window.innerWidth * (0.12 + i * 0.2);
     const y = window.innerHeight * (0.22 + Math.sin(time + i) * 0.08);
     const radius = 70 + Math.sin(time * 2 + i) * 18;
 
-    fxCtx.fillStyle = bgColors[i % bgColors.length];
-    fxCtx.beginPath();
-    fxCtx.arc(x, y, radius, 0, Math.PI * 2);
-    fxCtx.fill();
+    uiCtx.fillStyle = colors[i % colors.length];
+    uiCtx.beginPath();
+    uiCtx.arc(x, y, radius, 0, Math.PI * 2);
+    uiCtx.fill();
   }
 
-  fxCtx.restore();
+  uiCtx.restore();
+}
+
+function handleAutoRotate() {
+  if (!autoRotate) return;
+
+  const now = Date.now();
+
+  if (now - lastAutoRotateTime > autoRotateInterval) {
+    nextMode();
+    lastAutoRotateTime = now;
+  }
 }
 
 async function gameLoop() {
   if (!running) return;
 
   fadePaintCanvas();
+  handleAutoRotate();
+
+  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   const poses = await detector.estimatePoses(video, {
     maxPoses: 1,
@@ -703,20 +879,28 @@ async function gameLoop() {
     const leftShoulder = getKeypoint(pose, "left_shoulder");
     const rightShoulder = getKeypoint(pose, "right_shoulder");
 
-    if (leftWrist && leftWrist.score > 0.28) {
-      const leftPoint = videoToCanvasPoint(leftWrist);
-      drawHandEffect(leftPoint, lastLeftHand);
-      lastLeftHand = leftPoint;
+    let detected = false;
+
+    if (leftWrist && leftWrist.score > 0.25) {
+      const rawLeft = videoToCanvasPoint(leftWrist);
+      smoothLeftHand = smoothPoint(smoothLeftHand, rawLeft, 0.22);
+      drawHandEffect(smoothLeftHand, lastLeftHand);
+      lastLeftHand = smoothLeftHand;
+      detected = true;
     } else {
       lastLeftHand = null;
+      smoothLeftHand = null;
     }
 
-    if (rightWrist && rightWrist.score > 0.28) {
-      const rightPoint = videoToCanvasPoint(rightWrist);
-      drawHandEffect(rightPoint, lastRightHand);
-      lastRightHand = rightPoint;
+    if (rightWrist && rightWrist.score > 0.25) {
+      const rawRight = videoToCanvasPoint(rightWrist);
+      smoothRightHand = smoothPoint(smoothRightHand, rawRight, 0.22);
+      drawHandEffect(smoothRightHand, lastRightHand);
+      lastRightHand = smoothRightHand;
+      detected = true;
     } else {
       lastRightHand = null;
+      smoothRightHand = null;
     }
 
     if (
@@ -728,21 +912,31 @@ async function gameLoop() {
       const ls = videoToCanvasPoint(leftShoulder);
       const rs = videoToCanvasPoint(rightShoulder);
       detectJump(ls, rs);
+      detected = true;
     }
+
+    noPoseFrames = detected ? 0 : noPoseFrames + 1;
   } else {
     lastLeftHand = null;
     lastRightHand = null;
+    smoothLeftHand = null;
+    smoothRightHand = null;
+    noPoseFrames++;
   }
 
   updateParticles();
   drawSoftBackgroundMotion();
+
+  if (noPoseFrames > 40) {
+    drawAttractMode();
+  }
 
   requestAnimationFrame(gameLoop);
 }
 
 startBtn.addEventListener("click", async () => {
   try {
-    currentMode = modeSelect.value;
+    setMode(modeSelect.value);
 
     splash.style.display = "none";
     game.style.display = "block";
@@ -751,12 +945,14 @@ startBtn.addEventListener("click", async () => {
     await setupPoseDetector();
 
     running = true;
+    lastAutoRotateTime = Date.now();
 
     setTimeout(() => {
       topTitle.classList.add("fadeOut");
       instruction.classList.add("fadeOut");
     }, 3500);
 
+    clearScreen();
     gameLoop();
   } catch (err) {
     console.error(err);
@@ -767,7 +963,48 @@ startBtn.addEventListener("click", async () => {
 });
 
 modeSelect.addEventListener("change", () => {
-  currentMode = modeSelect.value;
+  setMode(modeSelect.value);
+});
+
+document.querySelectorAll("#staffPanel button[data-mode]").forEach(button => {
+  button.addEventListener("click", () => {
+    setMode(button.dataset.mode);
+  });
+});
+
+clearBtn.addEventListener("click", clearScreen);
+
+autoBtn.addEventListener("click", () => {
+  autoRotate = !autoRotate;
+  autoBtn.textContent = autoRotate ? "Auto: On" : "Auto: Off";
+  lastAutoRotateTime = Date.now();
+});
+
+document.addEventListener("keydown", event => {
+  const key = event.key.toLowerCase();
+
+  if (key === "1") setMode("paint");
+  if (key === "2") setMode("bubbles");
+  if (key === "3") setMode("stars");
+  if (key === "4") setMode("flowers");
+  if (key === "5") setMode("mist");
+  if (key === "6") setMode("waves");
+
+  if (key === "c") clearScreen();
+
+  if (key === "a") {
+    autoRotate = !autoRotate;
+    autoBtn.textContent = autoRotate ? "Auto: On" : "Auto: Off";
+    lastAutoRotateTime = Date.now();
+  }
+
+  if (key === "f") {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  }
 });
 
 loadCameras();
