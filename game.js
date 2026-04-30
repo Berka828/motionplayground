@@ -1,12 +1,9 @@
 const video = document.getElementById("video");
-
 const paintCanvas = document.getElementById("paintCanvas");
 const fxCanvas = document.getElementById("fxCanvas");
-const uiCanvas = document.getElementById("uiCanvas");
 
 const paintCtx = paintCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
-const uiCtx = uiCanvas.getContext("2d");
 
 const splash = document.getElementById("splash");
 const game = document.getElementById("game");
@@ -89,20 +86,20 @@ const modes = [
   { id: "stars", label: "Stars" },
   { id: "flowers", label: "Flowers" },
   { id: "mist", label: "Graffiti Mist" },
-  { id: "waves", label: "Bronx Color Waves" }
+  { id: "waves", label: "Color Waves" }
 ];
 
 function resizeCanvases() {
   const dpr = window.devicePixelRatio || 1;
 
-  [paintCanvas, fxCanvas, uiCanvas].forEach(canvas => {
+  [paintCanvas, fxCanvas].forEach(canvas => {
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     canvas.style.width = window.innerWidth + "px";
     canvas.style.height = window.innerHeight + "px";
   });
 
-  [paintCtx, fxCtx, uiCtx].forEach(ctx => {
+  [paintCtx, fxCtx].forEach(ctx => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   });
 }
@@ -240,6 +237,14 @@ function randomColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
+function finishClearScreen() {
+  paintCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  particles = [];
+  ribbons = [];
+  handGlows = [];
+}
+
 function clearScreenAnimated() {
   resetWipe = {
     radius: 0,
@@ -250,15 +255,6 @@ function clearScreenAnimated() {
   particles = [];
   ribbons = [];
   playChime(520, 0.08, "sine");
-}
-
-function finishClearScreen() {
-  paintCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  particles = [];
-  ribbons = [];
-  handGlows = [];
 }
 
 function fadePaintCanvas() {
@@ -852,9 +848,7 @@ function detectJump(leftShoulder, rightShoulder) {
 
   const movement = previousShoulderY - shoulderY;
 
-  if (jumpCooldown > 0) {
-    jumpCooldown--;
-  }
+  if (jumpCooldown > 0) jumpCooldown--;
 
   if (movement > jumpSensitivity && jumpCooldown <= 0) {
     createOrganicBloom(window.innerWidth / 2, window.innerHeight * 0.55);
@@ -865,11 +859,11 @@ function detectJump(leftShoulder, rightShoulder) {
 }
 
 function drawAttractMode() {
-  if (Math.random() > 0.955) {
+  if (Math.random() > 0.96) {
     const typeRoll = Math.random();
     const color = randomColor();
 
-    if (typeRoll < 0.45) {
+    if (typeRoll < 0.5) {
       particles.push({
         type: "bubble",
         x: Math.random() * window.innerWidth,
@@ -877,13 +871,13 @@ function drawAttractMode() {
         vx: (Math.random() - 0.5) * 0.4,
         vy: -Math.random() * 0.8 - 0.25,
         radius: Math.random() * 22 + 14,
-        alpha: 0.26,
+        alpha: 0.24,
         decay: 0.003,
         color,
         rotation: 0,
         grow: 1
       });
-    } else if (typeRoll < 0.78) {
+    } else {
       ribbons.push({
         x: Math.random() * window.innerWidth,
         y: window.innerHeight * (0.35 + Math.random() * 0.4),
@@ -893,13 +887,6 @@ function drawAttractMode() {
         thickness: Math.random() * 2 + 1,
         speed: 0.35
       });
-    } else {
-      createSoftDots(
-        Math.random() * window.innerWidth,
-        window.innerHeight * (0.25 + Math.random() * 0.5),
-        color,
-        1
-      );
     }
   }
 }
@@ -920,8 +907,6 @@ async function gameLoop() {
 
   fadePaintCanvas();
   handleAutoRotate();
-
-  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   const poses = await detector.estimatePoses(video, {
     maxPoses: 1,
@@ -983,9 +968,7 @@ async function gameLoop() {
 
   updateParticles();
 
-  if (noPoseFrames > 45) {
-    drawAttractMode();
-  }
+  if (noPoseFrames > 45) drawAttractMode();
 
   requestAnimationFrame(gameLoop);
 }
@@ -1067,14 +1050,10 @@ startBtn.addEventListener("click", async () => {
   }
 });
 
-modeSelect.addEventListener("change", () => {
-  setMode(modeSelect.value);
-});
+modeSelect.addEventListener("change", () => setMode(modeSelect.value));
 
 document.querySelectorAll("#staffPanel button[data-mode]").forEach(button => {
-  button.addEventListener("click", () => {
-    setMode(button.dataset.mode);
-  });
+  button.addEventListener("click", () => setMode(button.dataset.mode));
 });
 
 clearBtn.addEventListener("click", clearScreenAnimated);
