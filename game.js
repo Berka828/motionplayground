@@ -27,12 +27,14 @@ const smoothSlider = document.getElementById("smoothSlider");
 const staffPanel = document.getElementById("staffPanel");
 const modeBadge = document.getElementById("modeBadge");
 const watermarkLogo = document.getElementById("watermarkLogo");
+const promptText = document.getElementById("promptText");
 
 let detector = null;
 let currentStream = null;
 let running = false;
 
 let currentMode = "glow";
+let currentPreset = "standard";
 let autoRotate = false;
 let controlsHidden = false;
 let soundEnabled = false;
@@ -42,6 +44,9 @@ let audioCtx = null;
 let lastAutoRotateTime = 0;
 const autoRotateInterval = 30000;
 
+let lastPromptTime = 0;
+let lastCreatureSpawnTime = 0;
+
 let lastLeftHand = null;
 let lastRightHand = null;
 let smoothLeftHand = null;
@@ -50,6 +55,7 @@ let smoothRightHand = null;
 let particles = [];
 let ribbons = [];
 let handGlows = [];
+let creatures = [];
 let resetWipe = null;
 
 let previousShoulderY = null;
@@ -60,6 +66,10 @@ let fadeAmount = 0.05;
 let dragAmount = 0.97;
 let jumpSensitivity = 34;
 let smoothingAmount = 0.22;
+
+let effectScale = 1;
+let creatureRate = 1;
+let soundScale = 1;
 
 const BRAND = {
   yellow: "#ffd100",
@@ -87,6 +97,15 @@ const modes = [
   { id: "flowers", label: "Flowers" },
   { id: "mist", label: "Graffiti Mist" },
   { id: "waves", label: "Color Waves" }
+];
+
+const prompts = [
+  "Can you paint with both hands?",
+  "Find a floating friend!",
+  "Make a giant circle!",
+  "Move slowly and see what follows you.",
+  "Jump to make the wall bloom!",
+  "Can you make colors dance?"
 ];
 
 function resizeCanvases() {
@@ -225,10 +244,7 @@ function videoToCanvasPoint(point) {
   const x = offsetX + (point.x / video.videoWidth) * drawWidth;
   const y = offsetY + (point.y / video.videoHeight) * drawHeight;
 
-  return {
-    x: mirrorX(x),
-    y
-  };
+  return { x: mirrorX(x), y };
 }
 
 function smoothPoint(previous, current) {
@@ -242,6 +258,10 @@ function smoothPoint(previous, current) {
 
 function randomColor() {
   return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
 }
 
 function finishClearScreen() {
@@ -296,6 +316,83 @@ function nextMode() {
   setMode(next.id);
 }
 
+function applyPreset(name) {
+  currentPreset = name;
+
+  if (name === "sensory") {
+    effectScale = 0.55;
+    creatureRate = 0.55;
+    soundScale = 0.55;
+
+    fadeAmount = 0.068;
+    dragAmount = 0.955;
+    jumpSensitivity = 48;
+    smoothingAmount = 0.16;
+
+    fadeSlider.value = 68;
+    dragSlider.value = 955;
+    jumpSlider.value = 48;
+    smoothSlider.value = 16;
+
+    showPrompt("Sensory Friendly Mode");
+  }
+
+  if (name === "standard") {
+    effectScale = 1;
+    creatureRate = 1;
+    soundScale = 1;
+
+    fadeAmount = 0.05;
+    dragAmount = 0.97;
+    jumpSensitivity = 34;
+    smoothingAmount = 0.22;
+
+    fadeSlider.value = 50;
+    dragSlider.value = 970;
+    jumpSlider.value = 34;
+    smoothSlider.value = 22;
+
+    showPrompt("Standard Mode");
+  }
+
+  if (name === "party") {
+    effectScale = 1.55;
+    creatureRate = 1.4;
+    soundScale = 1.15;
+
+    fadeAmount = 0.034;
+    dragAmount = 0.982;
+    jumpSensitivity = 28;
+    smoothingAmount = 0.28;
+
+    fadeSlider.value = 34;
+    dragSlider.value = 982;
+    jumpSlider.value = 28;
+    smoothSlider.value = 28;
+
+    showPrompt("Party Mode");
+  }
+}
+
+function showPrompt(text) {
+  promptText.textContent = text;
+  promptText.classList.add("show");
+
+  setTimeout(() => {
+    promptText.classList.remove("show");
+  }, 2600);
+}
+
+function maybeShowPrompt() {
+  const now = Date.now();
+
+  if (now - lastPromptTime < 18000) return;
+  if (Math.random() > 0.008) return;
+
+  lastPromptTime = now;
+  showPrompt(prompts[Math.floor(Math.random() * prompts.length)]);
+}
+
 function drawHandEffect(current, last) {
   if (!last) return;
 
@@ -305,6 +402,8 @@ function drawHandEffect(current, last) {
   if (currentMode === "flowers") drawFlowers(current, last);
   if (currentMode === "mist") drawMist(current);
   if (currentMode === "waves") drawWaves(current, last);
+
+  attractCreaturesToHand(current);
 }
 
 function addHandGlow(point, color) {
@@ -312,7 +411,7 @@ function addHandGlow(point, color) {
     x: point.x,
     y: point.y,
     radius: 42,
-    alpha: 0.32,
+    alpha: 0.32 * effectScale,
     color
   });
 }
@@ -323,7 +422,8 @@ function drawColorGlow(current, last) {
 
   addHandGlow(current, color);
 
-  for (let i = 0; i < 4; i++) {
+  const count = Math.round(4 * effectScale);
+  for (let i = 0; i < count; i++) {
     particles.push({
       type: "mist",
       x: current.x + (Math.random() - 0.5) * 54,
@@ -349,7 +449,8 @@ function drawBubbles(current) {
   const color = randomColor();
   addHandGlow(current, color);
 
-  for (let i = 0; i < 2; i++) {
+  const count = Math.round(2 * effectScale);
+  for (let i = 0; i < count; i++) {
     particles.push({
       type: "bubble",
       x: current.x + (Math.random() - 0.5) * 34,
@@ -372,7 +473,8 @@ function drawStars(current) {
   const color = randomColor();
   addHandGlow(current, color);
 
-  for (let i = 0; i < 3; i++) {
+  const count = Math.round(3 * effectScale);
+  for (let i = 0; i < count; i++) {
     particles.push({
       type: "star",
       x: current.x + (Math.random() - 0.5) * 44,
@@ -419,7 +521,8 @@ function drawMist(current) {
   const color = randomColor();
   addHandGlow(current, color);
 
-  for (let i = 0; i < 4; i++) {
+  const count = Math.round(4 * effectScale);
+  for (let i = 0; i < count; i++) {
     particles.push({
       type: "mist",
       x: current.x + (Math.random() - 0.5) * 80,
@@ -455,7 +558,7 @@ function drawWaves(current, last) {
   paintCtx.save();
   paintCtx.globalCompositeOperation = "source-over";
   paintCtx.strokeStyle = color;
-  paintCtx.lineWidth = 12;
+  paintCtx.lineWidth = 12 * effectScale;
   paintCtx.globalAlpha = 0.22;
   paintCtx.lineCap = "round";
 
@@ -479,7 +582,7 @@ function maybeSmallRing(x, y, color) {
       x,
       y,
       radius: Math.random() * 12 + 8,
-      alpha: 0.22,
+      alpha: 0.18,
       color,
       thickness: Math.random() * 2 + 1,
       speed: 0.55
@@ -488,35 +591,42 @@ function maybeSmallRing(x, y, color) {
 }
 
 function createOrganicBloom(x, y) {
-  const bloomColors = colors;
+  createSupportingRipples(x, y);
 
-  for (let i = 0; i < 5; i++) {
+  if (currentMode === "glow") createGlowExplosion(x, y);
+  if (currentMode === "bubbles") createBubbleMagicMoment(x, y);
+  if (currentMode === "stars") createStarMagicMoment(x, y);
+  if (currentMode === "flowers") createFlowerMagicMoment(x, y);
+  if (currentMode === "mist") createMistMagicMoment(x, y);
+  if (currentMode === "waves") createWaveMagicMoment(x, y);
+
+  reactCreaturesToJump(x, y);
+  playJumpSound();
+}
+
+function createSupportingRipples(x, y) {
+  const count = Math.round(5 * effectScale);
+
+  for (let i = 0; i < count; i++) {
     ribbons.push({
       x: x + (Math.random() - 0.5) * 360,
       y: y + (Math.random() - 0.5) * 240,
       radius: Math.random() * 42 + 32,
-      alpha: 0.28,
-      color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 4 + 1.5,
-      speed: 0.75
+      alpha: 0.18,
+      color: randomColor(),
+      thickness: Math.random() * 3 + 1,
+      speed: 0.7
     });
   }
-
-  if (currentMode === "glow") createGlowExplosion(x, y, bloomColors);
-  if (currentMode === "bubbles") createBubbleExplosion(x, y, bloomColors);
-  if (currentMode === "stars") createStarExplosion(x, y, bloomColors);
-  if (currentMode === "flowers") createFlowerExplosion(x, y, bloomColors);
-  if (currentMode === "mist") createMistExplosion(x, y, bloomColors);
-  if (currentMode === "waves") createWaveExplosion(x, y, bloomColors);
-
-  playJumpSound();
 }
 
-function createGlowExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 120; i++) {
+function createGlowExplosion(x, y) {
+  const count = Math.round(120 * effectScale);
+
+  for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = Math.random() * 7 + 1.5;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+    const color = randomColor();
 
     particles.push({
       type: "mist",
@@ -532,79 +642,112 @@ function createGlowExplosion(x, y, bloomColors) {
       grow: 1
     });
   }
+
+  showPrompt("Color bloom!");
 }
 
-function createBubbleExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 105; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 9 + 2;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+function createBubbleMagicMoment(x, y) {
+  const count = Math.round(135 * effectScale);
+
+  for (let i = 0; i < count; i++) {
+    const spread = window.innerWidth * 0.95;
+    const bx = window.innerWidth * 0.5 + (Math.random() - 0.5) * spread;
+    const by = window.innerHeight + Math.random() * 120;
+    const color = randomColor();
 
     particles.push({
       type: "bubble",
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 1.5,
-      radius: Math.random() * 42 + 16,
-      alpha: 0.72,
-      decay: 0.006,
+      x: bx,
+      y: by,
+      vx: (Math.random() - 0.5) * 1.8,
+      vy: -randomBetween(2.2, 7.2),
+      radius: randomBetween(18, 70),
+      alpha: 0.62,
+      decay: 0.0046,
       color,
-      rotation: Math.random() * Math.PI,
+      rotation: 0,
       grow: 1
     });
   }
+
+  for (let i = 0; i < Math.round(8 * effectScale); i++) {
+    ribbons.push({
+      x: x + (Math.random() - 0.5) * 500,
+      y: y + (Math.random() - 0.5) * 240,
+      radius: randomBetween(30, 80),
+      alpha: 0.16,
+      color: randomColor(),
+      thickness: randomBetween(1, 3),
+      speed: 0.9
+    });
+  }
+
+  showPrompt("Bubble wave!");
 }
 
-function createStarExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 115; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 11 + 3;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+function createStarMagicMoment(x, y) {
+  const count = Math.round(120 * effectScale);
+
+  for (let i = 0; i < count; i++) {
+    const fromLeft = Math.random() > 0.5;
+    const sx = fromLeft ? -80 : window.innerWidth + 80;
+    const sy = randomBetween(60, window.innerHeight * 0.68);
+    const angle = fromLeft ? randomBetween(-0.35, 0.35) : Math.PI + randomBetween(-0.35, 0.35);
+    const speed = randomBetween(5, 14);
+    const color = randomColor();
 
     particles.push({
-      type: "star",
-      x,
-      y,
+      type: "shootingStar",
+      x: sx,
+      y: sy,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: Math.random() * 17 + 8,
+      vy: Math.sin(angle) * speed + randomBetween(-1, 2),
+      radius: randomBetween(8, 24),
       alpha: 0.82,
-      decay: 0.009,
+      decay: 0.008,
       color,
       rotation: Math.random() * Math.PI,
-      grow: 1
+      grow: 1,
+      tail: randomBetween(40, 110)
     });
   }
+
+  showPrompt("Shooting stars!");
 }
 
-function createFlowerExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 95; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 7 + 2;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+function createFlowerMagicMoment(x, y) {
+  const count = Math.round(130 * effectScale);
+
+  for (let i = 0; i < count; i++) {
+    const fx = randomBetween(0, window.innerWidth);
+    const fy = randomBetween(window.innerHeight * 0.45, window.innerHeight * 0.95);
+    const color = randomColor();
 
     particles.push({
       type: "flower",
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: Math.random() * 28 + 18,
-      alpha: 0.82,
-      decay: 0.006,
+      x: fx,
+      y: fy,
+      vx: randomBetween(-0.5, 0.5),
+      vy: randomBetween(-2.2, -0.4),
+      radius: randomBetween(16, 42),
+      alpha: 0.86,
+      decay: 0.0046,
       color,
       rotation: Math.random() * Math.PI,
-      grow: 1
+      grow: 1.4
     });
   }
+
+  showPrompt("Garden bloom!");
 }
 
-function createMistExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 150; i++) {
+function createMistMagicMoment(x, y) {
+  const count = Math.round(190 * effectScale);
+
+  for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 5.5 + 1.2;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+    const speed = randomBetween(0.6, 5.2);
+    const color = randomColor();
 
     particles.push({
       type: "mist",
@@ -612,28 +755,210 @@ function createMistExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 78 + 34,
-      alpha: 0.16,
-      decay: 0.004,
+      radius: randomBetween(48, 120),
+      alpha: 0.18,
+      decay: 0.0032,
       color,
       rotation: Math.random() * Math.PI,
+      grow: 1.1
+    });
+  }
+
+  showPrompt("Color cloud!");
+}
+
+function createWaveMagicMoment(x, y) {
+  const count = Math.round(34 * effectScale);
+
+  for (let i = 0; i < count; i++) {
+    ribbons.push({
+      x: window.innerWidth * (i / count),
+      y: window.innerHeight * randomBetween(0.25, 0.8),
+      radius: randomBetween(36, 90),
+      alpha: 0.3,
+      color: randomColor(),
+      thickness: randomBetween(2, 7),
+      speed: randomBetween(0.8, 1.8)
+    });
+  }
+
+  for (let i = 0; i < Math.round(30 * effectScale); i++) {
+    particles.push({
+      type: "waveDot",
+      x: randomBetween(0, window.innerWidth),
+      y: y + randomBetween(-240, 240),
+      vx: randomBetween(-4, 4),
+      vy: randomBetween(-1, 1),
+      radius: randomBetween(8, 24),
+      alpha: 0.44,
+      decay: 0.008,
+      color: randomColor(),
+      rotation: 0,
+      grow: 1
+    });
+  }
+
+  showPrompt("Wall ripple!");
+}
+
+function maybeSpawnCreature(force = false) {
+  const now = Date.now();
+  const wait = currentPreset === "party" ? 1800 : currentPreset === "sensory" ? 6000 : 3500;
+
+  if (!force && now - lastCreatureSpawnTime < wait) return;
+  if (!force && Math.random() > 0.018 * creatureRate) return;
+
+  lastCreatureSpawnTime = now;
+
+  const type = ["butterfly", "bubbleFriend", "starFriend", "turtle"][Math.floor(Math.random() * 4)];
+
+  creatures.push({
+    type,
+    x: randomBetween(80, window.innerWidth - 80),
+    y: randomBetween(120, window.innerHeight - 160),
+    vx: randomBetween(-0.8, 0.8),
+    vy: randomBetween(-0.5, 0.5),
+    size: randomBetween(22, 46),
+    color: randomColor(),
+    alpha: 0,
+    life: randomBetween(480, 860),
+    target: null,
+    wiggle: Math.random() * 100
+  });
+}
+
+function attractCreaturesToHand(hand) {
+  for (const c of creatures) {
+    const dx = hand.x - c.x;
+    const dy = hand.y - c.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 220) {
+      c.target = hand;
+      c.vx += dx * 0.0009;
+      c.vy += dy * 0.0009;
+    }
+  }
+}
+
+function reactCreaturesToJump(x, y) {
+  for (const c of creatures) {
+    const dx = c.x - x;
+    const dy = c.y - y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const force = 12 / dist;
+
+    c.vx += dx * force;
+    c.vy += dy * force;
+    c.life += 120;
+
+    particles.push({
+      type: "spark",
+      x: c.x,
+      y: c.y,
+      vx: randomBetween(-4, 4),
+      vy: randomBetween(-4, 4),
+      radius: randomBetween(5, 12),
+      alpha: 0.7,
+      decay: 0.018,
+      color: c.color,
+      rotation: 0,
       grow: 1
     });
   }
 }
 
-function createWaveExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 28; i++) {
-    ribbons.push({
-      x: x + (Math.random() - 0.5) * 760,
-      y: y + (Math.random() - 0.5) * 520,
-      radius: Math.random() * 58 + 34,
-      alpha: 0.34,
-      color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 5 + 2,
-      speed: 1
-    });
+function updateCreatures() {
+  maybeSpawnCreature(false);
+
+  for (let i = creatures.length - 1; i >= 0; i--) {
+    const c = creatures[i];
+
+    c.life--;
+    c.alpha = Math.min(0.78, c.alpha + 0.015);
+
+    c.x += c.vx + Math.sin(Date.now() * 0.002 + c.wiggle) * 0.35;
+    c.y += c.vy + Math.cos(Date.now() * 0.0017 + c.wiggle) * 0.28;
+
+    c.vx *= 0.985;
+    c.vy *= 0.985;
+
+    if (c.x < 30 || c.x > window.innerWidth - 30) c.vx *= -1;
+    if (c.y < 80 || c.y > window.innerHeight - 80) c.vy *= -1;
+
+    drawCreature(c);
+
+    if (c.life <= 0) {
+      creatures.splice(i, 1);
+    }
   }
+}
+
+function drawCreature(c) {
+  fxCtx.save();
+  fxCtx.globalAlpha = c.alpha;
+  fxCtx.translate(c.x, c.y);
+
+  if (c.type === "butterfly") {
+    fxCtx.fillStyle = c.color;
+
+    fxCtx.beginPath();
+    fxCtx.ellipse(-c.size * 0.25, 0, c.size * 0.28, c.size * 0.42, Math.sin(Date.now() * 0.008) * 0.5, 0, Math.PI * 2);
+    fxCtx.fill();
+
+    fxCtx.beginPath();
+    fxCtx.ellipse(c.size * 0.25, 0, c.size * 0.28, c.size * 0.42, -Math.sin(Date.now() * 0.008) * 0.5, 0, Math.PI * 2);
+    fxCtx.fill();
+
+    fxCtx.fillStyle = BRAND.purple;
+    fxCtx.globalAlpha = c.alpha * 0.45;
+    fxCtx.beginPath();
+    fxCtx.arc(0, 0, c.size * 0.12, 0, Math.PI * 2);
+    fxCtx.fill();
+  }
+
+  if (c.type === "bubbleFriend") {
+    fxCtx.strokeStyle = c.color;
+    fxCtx.lineWidth = 4;
+    fxCtx.beginPath();
+    fxCtx.arc(0, 0, c.size * 0.45, 0, Math.PI * 2);
+    fxCtx.stroke();
+
+    fxCtx.fillStyle = c.color;
+    fxCtx.globalAlpha = c.alpha * 0.12;
+    fxCtx.fill();
+
+    fxCtx.globalAlpha = c.alpha * 0.5;
+    fxCtx.fillStyle = BRAND.white;
+    fxCtx.beginPath();
+    fxCtx.arc(-c.size * 0.14, -c.size * 0.14, c.size * 0.08, 0, Math.PI * 2);
+    fxCtx.fill();
+  }
+
+  if (c.type === "starFriend") {
+    drawStarShape(fxCtx, 0, 0, c.size * 0.45, c.color, c.alpha, Date.now() * 0.001 + c.wiggle);
+  }
+
+  if (c.type === "turtle") {
+    fxCtx.fillStyle = c.color;
+    fxCtx.beginPath();
+    fxCtx.ellipse(0, 0, c.size * 0.42, c.size * 0.3, 0, 0, Math.PI * 2);
+    fxCtx.fill();
+
+    fxCtx.fillStyle = BRAND.green;
+    fxCtx.globalAlpha = c.alpha * 0.55;
+    fxCtx.beginPath();
+    fxCtx.arc(c.size * 0.42, 0, c.size * 0.15, 0, Math.PI * 2);
+    fxCtx.fill();
+
+    fxCtx.fillStyle = BRAND.white;
+    fxCtx.globalAlpha = c.alpha * 0.8;
+    fxCtx.beginPath();
+    fxCtx.arc(c.size * 0.47, -c.size * 0.04, c.size * 0.035, 0, Math.PI * 2);
+    fxCtx.fill();
+  }
+
+  fxCtx.restore();
 }
 
 function drawStarShape(ctx, x, y, radius, color, alpha, rotation) {
@@ -711,6 +1036,14 @@ function updateParticles() {
       fxCtx.fill();
     } else if (p.type === "star") {
       drawStarShape(fxCtx, p.x, p.y, p.radius, p.color, p.alpha, p.rotation);
+    } else if (p.type === "shootingStar") {
+      fxCtx.strokeStyle = p.color;
+      fxCtx.lineWidth = Math.max(2, p.radius * 0.2);
+      fxCtx.beginPath();
+      fxCtx.moveTo(p.x, p.y);
+      fxCtx.lineTo(p.x - p.vx * p.tail * 0.05, p.y - p.vy * p.tail * 0.05);
+      fxCtx.stroke();
+      drawStarShape(fxCtx, p.x, p.y, p.radius, p.color, p.alpha, p.rotation);
     } else if (p.type === "flower") {
       drawFlowerShape(fxCtx, p.x, p.y, p.radius, p.color, p.alpha, p.rotation);
     } else if (p.type === "mist") {
@@ -733,6 +1066,7 @@ function updateParticles() {
 
   updateRibbons();
   updateHandGlows();
+  updateCreatures();
   updateResetWipe();
 }
 
@@ -832,14 +1166,17 @@ function detectJump(leftShoulder, rightShoulder) {
 
   if (movement > jumpSensitivity && jumpCooldown <= 0) {
     createOrganicBloom(window.innerWidth / 2, window.innerHeight * 0.55);
-    jumpCooldown = 85;
+    jumpCooldown = currentPreset === "party" ? 62 : currentPreset === "sensory" ? 120 : 85;
   }
 
   previousShoulderY = shoulderY;
 }
 
 function drawAttractMode() {
-  if (Math.random() > 0.96) {
+  maybeSpawnCreature(false);
+  maybeShowPrompt();
+
+  if (Math.random() > 0.965) {
     const color = randomColor();
 
     particles.push({
@@ -849,7 +1186,7 @@ function drawAttractMode() {
       vx: (Math.random() - 0.5) * 0.4,
       vy: -Math.random() * 0.8 - 0.25,
       radius: Math.random() * 22 + 14,
-      alpha: 0.24,
+      alpha: 0.22,
       decay: 0.003,
       color,
       rotation: 0,
@@ -956,8 +1293,10 @@ function playChime(freq = 440, duration = 0.08, type = "sine") {
   osc.type = type;
   osc.frequency.value = freq;
 
+  const volume = 0.035 * soundScale;
+
   gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.035, audioCtx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(volume, audioCtx.currentTime + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
 
   osc.connect(gain);
@@ -1008,6 +1347,8 @@ startBtn.addEventListener("click", async () => {
     }, 3500);
 
     finishClearScreen();
+    maybeSpawnCreature(true);
+    maybeSpawnCreature(true);
     gameLoop();
   } catch (err) {
     console.error(err);
@@ -1021,6 +1362,10 @@ modeSelect.addEventListener("change", () => setMode(modeSelect.value));
 
 document.querySelectorAll("#staffPanel button[data-mode]").forEach(button => {
   button.addEventListener("click", () => setMode(button.dataset.mode));
+});
+
+document.querySelectorAll("#staffPanel button[data-preset]").forEach(button => {
+  button.addEventListener("click", () => applyPreset(button.dataset.preset));
 });
 
 clearBtn.addEventListener("click", clearScreenAnimated);
