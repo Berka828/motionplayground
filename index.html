@@ -18,18 +18,21 @@
     <div class="splash-card">
       <div class="eyebrow">BxCM Creative World</div>
       <h1>Color Motion Playground</h1>
-      <p>
-        Move your hands to paint with light.  
-        Jump to create a splash explosion.
-      </p>
+      <p>Move your hands to paint with light. Jump to make the world bloom.</p>
 
       <select id="cameraSelect"></select>
 
-      <button id="startBtn">Start Experience</button>
+      <select id="modeSelect">
+        <option value="paint">Paint Trails</option>
+        <option value="bubbles">Bubbles</option>
+        <option value="stars">Stars</option>
+        <option value="flowers">Flowers</option>
+        <option value="mist">Graffiti Mist</option>
+        <option value="waves">Bronx Color Waves</option>
+      </select>
 
-      <div class="hint">
-        Allow camera access when prompted.
-      </div>
+      <button id="startBtn">Start Experience</button>
+      <div class="hint">Allow camera access when prompted.</div>
     </div>
   </div>
 
@@ -38,16 +41,14 @@
     <canvas id="paintCanvas"></canvas>
     <canvas id="fxCanvas"></canvas>
 
-    <div id="topTitle">
+    <div id="topTitle" class="introText">
       <span>CREATE</span>
       Color Motion Playground
     </div>
 
-    <div id="instruction">
-      Raise both hands and move slowly to paint.
+    <div id="instruction" class="introText">
+      Move your hands slowly. Jump to make the world react.
     </div>
-
-    <div id="jumpText">SPLASH!</div>
   </div>
 
   <script src="game.js"></script>
