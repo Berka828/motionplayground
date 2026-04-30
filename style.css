@@ -16,18 +16,18 @@ body {
 #splash {
   position: fixed;
   inset: 0;
+  z-index: 20;
   background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20;
 }
 
 .splash-card {
   width: min(780px, 92vw);
   padding: 46px;
-  border-radius: 36px;
   text-align: center;
+  border-radius: 36px;
   background: rgba(255, 255, 255, 0.96);
   border: 2px solid rgba(59, 36, 131, 0.08);
   box-shadow: 0 24px 70px rgba(59, 36, 131, 0.08);
@@ -110,8 +110,8 @@ video {
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
-  opacity: 0.006;
-  filter: saturate(0.45) contrast(0.55);
+  opacity: 0.03;
+  filter: saturate(0.6) contrast(0.7);
   z-index: 1;
 }
 
@@ -145,11 +145,6 @@ canvas {
 
 #fxCanvas {
   z-index: 3;
-  pointer-events: none;
-}
-
-#uiCanvas {
-  z-index: 4;
   pointer-events: none;
 }
 
@@ -193,7 +188,6 @@ canvas {
 .introText.fadeOut {
   opacity: 0;
   transform: translateY(-12px);
-  pointer-events: none;
 }
 
 #modeBadge {
@@ -249,10 +243,6 @@ canvas {
   color: white;
   background: #3b2483;
   cursor: pointer;
-}
-
-#staffPanel button:hover {
-  transform: scale(1.04);
 }
 
 #staffPanel label {
