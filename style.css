@@ -122,9 +122,10 @@ video {
   width: min(680px, 54vw);
   height: auto;
   transform: translate(-50%, -50%);
-  opacity: 0.035;
+  opacity: 0.65;
   z-index: 1;
   pointer-events: none;
+  animation: logoBreathe 7s ease-in-out infinite;
   transition: opacity 1s ease;
 }
 
@@ -132,11 +133,21 @@ video {
   opacity: 0;
 }
 
-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+@keyframes logoBreathe {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.025);
+    opacity: 0.68;
+  }
+
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.55;
+  }
 }
 
 #paintCanvas {
