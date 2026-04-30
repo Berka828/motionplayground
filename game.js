@@ -81,7 +81,7 @@ const colors = [
 ];
 
 const modes = [
-  { id: "paint", label: "Paint Trails" },
+  { id: "glow", label: "Color Glow" },
   { id: "bubbles", label: "Bubbles" },
   { id: "stars", label: "Stars" },
   { id: "flowers", label: "Flowers" },
@@ -292,7 +292,7 @@ function nextMode() {
 function drawHandEffect(current, last) {
   if (!last) return;
 
-  if (currentMode === "paint") drawPaintTrail(current, last);
+  if (currentMode === "glow") drawColorGlow(current, last);
   if (currentMode === "bubbles") drawBubbles(current);
   if (currentMode === "stars") drawStars(current);
   if (currentMode === "flowers") drawFlowers(current, last);
@@ -339,6 +339,68 @@ function drawPaintTrail(current, last) {
   if (speed > 22) {
     createSoftDots(current.x, current.y, color, 3);
     playMovementSound(speed);
+  }
+}
+
+function drawColorGlow(current, last) {
+  const speed = Math.hypot(current.x - last.x, current.y - last.y);
+  const color = randomColor();
+
+  addHandGlow(current, color);
+
+  for (let i = 0; i < 4; i++) {
+    particles.push({
+      type: "mist",
+      x: current.x + (Math.random() - 0.5) * 54,
+      y: current.y + (Math.random() - 0.5) * 54,
+      vx: (Math.random() - 0.5) * 1.1,
+      vy: (Math.random() - 0.5) * 1.1,
+      radius: Math.random() * 36 + 22,
+      alpha: 0.18,
+      decay: 0.008,
+      color,
+      rotation: Math.random() * Math.PI,
+      grow: 1
+    });
+  }
+
+  if (speed > 24) {
+    maybeSmallRing(current.x, current.y, color);
+    playMovementSound(speed);
+  }
+}
+
+function createGlowExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 120; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 7 + 1.5;
+    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
+
+    particles.push({
+      type: "mist",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 70 + 30,
+      alpha: 0.22,
+      decay: 0.0045,
+      color,
+      rotation: Math.random() * Math.PI,
+      grow: 1
+    });
+  }
+
+  for (let i = 0; i < 5; i++) {
+    ribbons.push({
+      x: x + (Math.random() - 0.5) * 360,
+      y: y + (Math.random() - 0.5) * 240,
+      radius: Math.random() * 42 + 32,
+      alpha: 0.24,
+      color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
+      thickness: Math.random() * 4 + 1.5,
+      speed: 0.75
+    });
   }
 }
 
@@ -517,7 +579,7 @@ function createOrganicBloom(x, y) {
     });
   }
 
-  if (currentMode === "paint") createPaintExplosion(x, y, bloomColors);
+  if (currentMode === "glow") createGlowExplosion(x, y, bloomColors);
   if (currentMode === "bubbles") createBubbleExplosion(x, y, bloomColors);
   if (currentMode === "stars") createStarExplosion(x, y, bloomColors);
   if (currentMode === "flowers") createFlowerExplosion(x, y, bloomColors);
@@ -1088,7 +1150,7 @@ logoBtn.addEventListener("click", () => {
 document.addEventListener("keydown", event => {
   const key = event.key.toLowerCase();
 
-  if (key === "1") setMode("paint");
+  if (key === "1") setMode("glow");
   if (key === "2") setMode("bubbles");
   if (key === "3") setMode("stars");
   if (key === "4") setMode("flowers");
