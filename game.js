@@ -18,6 +18,8 @@ const topTitle = document.getElementById("topTitle");
 const clearBtn = document.getElementById("clearBtn");
 const autoBtn = document.getElementById("autoBtn");
 const modeBadge = document.getElementById("modeBadge");
+const fadeSlider = document.getElementById("fadeSlider");
+const dragSlider = document.getElementById("dragSlider");
 
 let detector = null;
 let currentStream = null;
@@ -40,6 +42,9 @@ let floatingLetters = [];
 let previousShoulderY = null;
 let jumpCooldown = 0;
 let noPoseFrames = 0;
+
+let fadeAmount = 0.012;
+let dragAmount = 0.972;
 
 const BRAND = {
   yellow: "#ffd100",
@@ -86,6 +91,14 @@ function resizeCanvases() {
 
 window.addEventListener("resize", resizeCanvases);
 resizeCanvases();
+
+fadeSlider.addEventListener("input", () => {
+  fadeAmount = Number(fadeSlider.value) / 1000;
+});
+
+dragSlider.addEventListener("input", () => {
+  dragAmount = Number(dragSlider.value) / 1000;
+});
 
 async function loadCameras() {
   try {
@@ -188,7 +201,7 @@ function videoToCanvasPoint(point) {
   };
 }
 
-function smoothPoint(previous, current, amount = 0.28) {
+function smoothPoint(previous, current, amount = 0.22) {
   if (!previous) return current;
 
   return {
@@ -207,12 +220,13 @@ function clearScreen() {
   uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   particles = [];
   ribbons = [];
+  floatingLetters = [];
 }
 
 function fadePaintCanvas() {
   paintCtx.save();
   paintCtx.globalCompositeOperation = "source-over";
-  paintCtx.fillStyle = "rgba(255, 255, 255, 0.012)";
+  paintCtx.fillStyle = `rgba(255, 255, 255, ${fadeAmount})`;
   paintCtx.fillRect(0, 0, window.innerWidth, window.innerHeight);
   paintCtx.restore();
 }
@@ -253,13 +267,12 @@ function drawPaintTrail(current, last) {
   const color = randomColor();
 
   paintCtx.save();
-  paintCtx.globalCompositeOperation = "multiply";
+  paintCtx.globalCompositeOperation = "source-over";
   paintCtx.lineCap = "round";
   paintCtx.lineJoin = "round";
-  paintCtx.shadowBlur = 18;
-  paintCtx.shadowColor = color;
+  paintCtx.shadowBlur = 0;
   paintCtx.strokeStyle = color;
-  paintCtx.globalAlpha = 0.72;
+  paintCtx.globalAlpha = 0.62;
   paintCtx.lineWidth = width;
 
   paintCtx.beginPath();
@@ -285,15 +298,16 @@ function drawBubbles(current, last) {
   for (let i = 0; i < 2; i++) {
     particles.push({
       type: "bubble",
-      x: current.x + (Math.random() - 0.5) * 26,
-      y: current.y + (Math.random() - 0.5) * 26,
+      x: current.x + (Math.random() - 0.5) * 34,
+      y: current.y + (Math.random() - 0.5) * 34,
       vx: (Math.random() - 0.5) * 0.9,
       vy: -Math.random() * 1.3 - 0.3,
       radius: Math.random() * 22 + 14,
-      alpha: 0.72,
+      alpha: 0.7,
       decay: 0.0048,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 
@@ -306,15 +320,16 @@ function drawStars(current, last) {
   for (let i = 0; i < 3; i++) {
     particles.push({
       type: "star",
-      x: current.x + (Math.random() - 0.5) * 34,
-      y: current.y + (Math.random() - 0.5) * 34,
+      x: current.x + (Math.random() - 0.5) * 44,
+      y: current.y + (Math.random() - 0.5) * 44,
       vx: (Math.random() - 0.5) * 2.2,
       vy: (Math.random() - 0.5) * 2.2,
       radius: Math.random() * 10 + 8,
-      alpha: 0.95,
+      alpha: 0.9,
       decay: 0.01,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 
@@ -329,15 +344,16 @@ function drawFlowers(current, last) {
 
   particles.push({
     type: "flower",
-    x: current.x,
-    y: current.y,
+    x: current.x + (Math.random() - 0.5) * 20,
+    y: current.y + (Math.random() - 0.5) * 20,
     vx: (Math.random() - 0.5) * 0.4,
     vy: (Math.random() - 0.5) * 0.4,
     radius: Math.random() * 18 + 18,
-    alpha: 0.9,
+    alpha: 0.86,
     decay: 0.0035,
     color,
-    rotation: Math.random() * Math.PI
+    rotation: Math.random() * Math.PI,
+    grow: 1
   });
 
   maybeSmallRing(current.x, current.y, color);
@@ -349,15 +365,16 @@ function drawMist(current, last) {
   for (let i = 0; i < 4; i++) {
     particles.push({
       type: "mist",
-      x: current.x + (Math.random() - 0.5) * 52,
-      y: current.y + (Math.random() - 0.5) * 52,
+      x: current.x + (Math.random() - 0.5) * 80,
+      y: current.y + (Math.random() - 0.5) * 80,
       vx: (Math.random() - 0.5) * 1.4,
       vy: (Math.random() - 0.5) * 1.4,
       radius: Math.random() * 42 + 30,
-      alpha: 0.22,
+      alpha: 0.18,
       decay: 0.0032,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 
@@ -371,17 +388,17 @@ function drawWaves(current, last) {
     x: current.x,
     y: current.y,
     radius: 18,
-    alpha: 0.82,
+    alpha: 0.68,
     color,
     thickness: Math.random() * 5 + 3,
     speed: 1.25
   });
 
   paintCtx.save();
-  paintCtx.globalCompositeOperation = "multiply";
+  paintCtx.globalCompositeOperation = "source-over";
   paintCtx.strokeStyle = color;
   paintCtx.lineWidth = 13;
-  paintCtx.globalAlpha = 0.34;
+  paintCtx.globalAlpha = 0.32;
   paintCtx.lineCap = "round";
 
   paintCtx.beginPath();
@@ -405,7 +422,7 @@ function maybeSmallRing(x, y, color) {
       x,
       y,
       radius: Math.random() * 16 + 8,
-      alpha: 0.56,
+      alpha: 0.48,
       color,
       thickness: Math.random() * 4 + 2,
       speed: 0.9
@@ -417,15 +434,16 @@ function createSoftDots(x, y, color, count = 6) {
   for (let i = 0; i < count; i++) {
     particles.push({
       type: "dot",
-      x: x + (Math.random() - 0.5) * 28,
-      y: y + (Math.random() - 0.5) * 28,
+      x: x + (Math.random() - 0.5) * 42,
+      y: y + (Math.random() - 0.5) * 42,
       vx: (Math.random() - 0.5) * 2.4,
       vy: (Math.random() - 0.5) * 2.4,
       radius: Math.random() * 8 + 4,
-      alpha: 0.82,
+      alpha: 0.62,
       decay: 0.012,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 }
@@ -435,10 +453,10 @@ function createOrganicBloom(x, y) {
 
   for (let i = 0; i < 10; i++) {
     ribbons.push({
-      x: x + (Math.random() - 0.5) * 300,
-      y: y + (Math.random() - 0.5) * 200,
-      radius: Math.random() * 40 + 28,
-      alpha: 1,
+      x: x + (Math.random() - 0.5) * 360,
+      y: y + (Math.random() - 0.5) * 240,
+      radius: Math.random() * 42 + 32,
+      alpha: 0.82,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
       thickness: Math.random() * 10 + 4,
       speed: 1.15
@@ -458,16 +476,16 @@ function createPaintExplosion(x, y, bloomColors) {
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     paintCtx.save();
-    paintCtx.globalCompositeOperation = "multiply";
-    paintCtx.globalAlpha = 0.32;
+    paintCtx.globalCompositeOperation = "source-over";
+    paintCtx.globalAlpha = 0.26;
     paintCtx.fillStyle = color;
 
     paintCtx.beginPath();
     paintCtx.ellipse(
-      x + (Math.random() - 0.5) * 620,
-      y + (Math.random() - 0.5) * 360,
-      Math.random() * 110 + 40,
-      Math.random() * 60 + 24,
+      x + (Math.random() - 0.5) * 720,
+      y + (Math.random() - 0.5) * 460,
+      Math.random() * 120 + 50,
+      Math.random() * 70 + 28,
       Math.random() * Math.PI,
       0,
       Math.PI * 2
@@ -477,13 +495,13 @@ function createPaintExplosion(x, y, bloomColors) {
     paintCtx.restore();
   }
 
-  createBrandLetters(x, y, 12);
+  createBrandLetters(x, y, 16);
 }
 
 function createBubbleExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 110; i++) {
+  for (let i = 0; i < 120; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 7 + 1.5;
+    const speed = Math.random() * 10 + 2;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -492,19 +510,20 @@ function createBubbleExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed - 1.5,
-      radius: Math.random() * 46 + 18,
-      alpha: 0.92,
+      radius: Math.random() * 48 + 18,
+      alpha: 0.86,
       decay: 0.0048,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 }
 
 function createStarExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 130; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 9 + 2.5;
+    const speed = Math.random() * 12 + 3.5;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -514,18 +533,19 @@ function createStarExplosion(x, y, bloomColors) {
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: Math.random() * 18 + 9,
-      alpha: 1,
+      alpha: 0.92,
       decay: 0.008,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 }
 
 function createFlowerExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 95; i++) {
+  for (let i = 0; i < 110; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 6 + 1.5;
+    const speed = Math.random() * 8 + 2;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -534,19 +554,20 @@ function createFlowerExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 28 + 18,
-      alpha: 1,
+      radius: Math.random() * 30 + 20,
+      alpha: 0.92,
       decay: 0.0048,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 }
 
 function createMistExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 170; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 4.5 + 0.8;
+    const speed = Math.random() * 6 + 1.3;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
@@ -555,49 +576,56 @@ function createMistExplosion(x, y, bloomColors) {
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: Math.random() * 72 + 34,
-      alpha: 0.32,
+      radius: Math.random() * 82 + 38,
+      alpha: 0.24,
       decay: 0.0028,
       color,
-      rotation: Math.random() * Math.PI
+      rotation: Math.random() * Math.PI,
+      grow: 1
     });
   }
 
-  createBrandLetters(x, y, 8);
+  createBrandLetters(x, y, 12);
 }
 
 function createWaveExplosion(x, y, bloomColors) {
   for (let i = 0; i < 34; i++) {
     ribbons.push({
-      x: x + (Math.random() - 0.5) * 660,
-      y: y + (Math.random() - 0.5) * 420,
+      x: x + (Math.random() - 0.5) * 760,
+      y: y + (Math.random() - 0.5) * 520,
       radius: Math.random() * 58 + 34,
-      alpha: 1,
+      alpha: 0.85,
       color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
       thickness: Math.random() * 13 + 5,
       speed: 1.45
     });
   }
 
-  createBrandLetters(x, y, 16);
+  createBrandLetters(x, y, 22);
 }
 
 function createBrandLetters(x, y, count) {
   const letters = ["B", "R", "O", "N", "X"];
 
   for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 15 + 8;
+
     particles.push({
       type: "letter",
       letter: letters[Math.floor(Math.random() * letters.length)],
       x,
       y,
-      vx: (Math.random() - 0.5) * 8,
-      vy: (Math.random() - 0.5) * 8,
-      radius: Math.random() * 26 + 24,
-      alpha: 0.95,
-      decay: 0.006,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 36 + 34,
+      maxRadius: Math.random() * 95 + 80,
+      alpha: 0.92,
+      decay: 0.0042,
       color: randomColor(),
-      rotation: (Math.random() - 0.5) * 1.4
+      rotation: (Math.random() - 0.5) * 1.6,
+      rotationSpeed: (Math.random() - 0.5) * 0.03,
+      grow: Math.random() * 1.8 + 1.2
     });
   }
 }
@@ -667,8 +695,21 @@ function updateParticles() {
 
     p.x += p.vx;
     p.y += p.vy;
-    p.vx *= 0.972;
-    p.vy *= 0.972;
+    p.vx *= dragAmount;
+    p.vy *= dragAmount;
+
+    if (p.grow) {
+      if (p.type === "letter") {
+        p.radius = Math.min(p.maxRadius, p.radius + p.grow);
+      } else {
+        p.radius += p.grow * 0.08;
+      }
+    }
+
+    if (p.rotationSpeed) {
+      p.rotation += p.rotationSpeed;
+    }
+
     p.alpha -= p.decay;
 
     if (p.type === "bubble") {
@@ -676,7 +717,7 @@ function updateParticles() {
     }
 
     fxCtx.save();
-    fxCtx.globalCompositeOperation = "multiply";
+    fxCtx.globalCompositeOperation = "source-over";
     fxCtx.globalAlpha = Math.max(0, p.alpha);
 
     if (p.type === "bubble") {
@@ -686,7 +727,7 @@ function updateParticles() {
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.stroke();
 
-      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.18);
+      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.12);
       fxCtx.fillStyle = p.color;
       fxCtx.fill();
     } else if (p.type === "star") {
@@ -695,6 +736,7 @@ function updateParticles() {
       drawFlowerShape(fxCtx, p.x, p.y, p.radius, p.color, p.alpha, p.rotation);
     } else if (p.type === "mist") {
       fxCtx.fillStyle = p.color;
+      fxCtx.globalAlpha = Math.max(0, p.alpha * 0.85);
       fxCtx.beginPath();
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.fill();
@@ -721,11 +763,11 @@ function updateRibbons() {
   for (let i = ribbons.length - 1; i >= 0; i--) {
     const r = ribbons[i];
 
-    r.alpha -= 0.0046;
+    r.alpha -= 0.0042;
     r.radius += r.speed || 1.2;
 
     fxCtx.save();
-    fxCtx.globalCompositeOperation = "multiply";
+    fxCtx.globalCompositeOperation = "source-over";
     fxCtx.globalAlpha = Math.max(0, r.alpha);
     fxCtx.strokeStyle = r.color;
     fxCtx.lineWidth = r.thickness || 4;
@@ -767,27 +809,26 @@ function detectJump(leftShoulder, rightShoulder) {
 function drawAttractMode() {
   const t = Date.now() * 0.001;
 
-  if (Math.random() > 0.92) {
+  if (Math.random() > 0.94) {
     floatingLetters.push({
       letter: ["B", "R", "O", "N", "X"][Math.floor(Math.random() * 5)],
       x: Math.random() * window.innerWidth,
-      y: window.innerHeight + 60,
-      vx: (Math.random() - 0.5) * 0.6,
+      y: window.innerHeight + 90,
+      vx: (Math.random() - 0.5) * 0.8,
       vy: -Math.random() * 1.2 - 0.4,
-      size: Math.random() * 42 + 32,
+      size: Math.random() * 52 + 42,
       color: randomColor(),
-      alpha: 0.55,
+      alpha: 0.5,
       rotation: (Math.random() - 0.5) * 0.8
     });
   }
 
-  uiCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
   for (let i = floatingLetters.length - 1; i >= 0; i--) {
     const l = floatingLetters[i];
 
-    l.x += l.vx + Math.sin(t + i) * 0.2;
+    l.x += l.vx + Math.sin(t + i) * 0.22;
     l.y += l.vy;
+    l.size += 0.04;
     l.alpha -= 0.0012;
 
     uiCtx.save();
@@ -801,46 +842,29 @@ function drawAttractMode() {
     uiCtx.fillText(l.letter, 0, 0);
     uiCtx.restore();
 
-    if (l.alpha <= 0 || l.y < -100) {
+    if (l.alpha <= 0 || l.y < -130) {
       floatingLetters.splice(i, 1);
     }
   }
-
-  uiCtx.save();
-  uiCtx.globalAlpha = 0.035;
-  uiCtx.globalCompositeOperation = "multiply";
-
-  for (let i = 0; i < 6; i++) {
-    uiCtx.fillStyle = colors[i % colors.length];
-    uiCtx.beginPath();
-    uiCtx.arc(
-      window.innerWidth * (0.12 + i * 0.16),
-      window.innerHeight * (0.45 + Math.sin(t * 0.55 + i) * 0.18),
-      90 + Math.sin(t + i) * 20,
-      0,
-      Math.PI * 2
-    );
-    uiCtx.fill();
-  }
-
-  uiCtx.restore();
 }
 
 function drawSoftBackgroundMotion() {
   const time = Date.now() * 0.00035;
 
   uiCtx.save();
-  uiCtx.globalCompositeOperation = "multiply";
-  uiCtx.globalAlpha = noPoseFrames > 40 ? 0.02 : 0.026;
+  uiCtx.globalCompositeOperation = "source-over";
+  uiCtx.globalAlpha = noPoseFrames > 40 ? 0.018 : 0.022;
 
   for (let i = 0; i < 5; i++) {
-    const x = window.innerWidth * (0.12 + i * 0.2);
-    const y = window.innerHeight * (0.22 + Math.sin(time + i) * 0.08);
-    const radius = 70 + Math.sin(time * 2 + i) * 18;
-
     uiCtx.fillStyle = colors[i % colors.length];
     uiCtx.beginPath();
-    uiCtx.arc(x, y, radius, 0, Math.PI * 2);
+    uiCtx.arc(
+      window.innerWidth * (0.12 + i * 0.2),
+      window.innerHeight * (0.22 + Math.sin(time + i) * 0.08),
+      70 + Math.sin(time * 2 + i) * 18,
+      0,
+      Math.PI * 2
+    );
     uiCtx.fill();
   }
 
