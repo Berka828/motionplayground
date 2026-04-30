@@ -14,35 +14,74 @@
 </head>
 
 <body>
+  <div id="splash">
+    <div class="splash-card">
+      <img src="bxcm-logo.png" class="logo" alt="Bronx Children's Museum Logo" />
 
-<div id="splash">
-  <div class="splash-card">
-    <img src="bxcm-logo.png" class="logo"/>
+      <div class="eyebrow">Interactive Creative World</div>
+      <h1>Color Motion Playground</h1>
+      <p>Move your hands to paint with Bronx color. Jump to make the world bloom.</p>
 
-    <h1>Color Motion Playground</h1>
+      <select id="cameraSelect"></select>
 
-    <select id="cameraSelect"></select>
+      <select id="modeSelect">
+        <option value="paint">Paint Trails</option>
+        <option value="bubbles">Bubbles</option>
+        <option value="stars">Stars</option>
+        <option value="flowers">Flowers</option>
+        <option value="mist">Graffiti Mist</option>
+        <option value="waves">Bronx Color Waves</option>
+      </select>
 
-    <button id="startBtn">Start</button>
+      <button id="startBtn">Start Experience</button>
+
+      <div class="hint">
+        Keys: 1–6 Modes · C Clear · A Auto · F Fullscreen · H Hide Controls · S Sound · L Logo
+      </div>
+    </div>
   </div>
-</div>
 
-<div id="game">
-  <video id="video" autoplay playsinline muted></video>
+  <div id="game">
+    <video id="video" autoplay playsinline muted></video>
 
-  <canvas id="paintCanvas"></canvas>
-  <canvas id="fxCanvas"></canvas>
-  <canvas id="uiCanvas"></canvas>
+    <img id="watermarkLogo" src="bxcm-logo.png" alt="BxCM Logo" />
 
-  <div id="staffPanel">
-    <button id="clearBtn">Clear</button>
-    <button id="logoBtn">Logo: On</button>
-    <button id="hideBtn">Hide</button>
+    <canvas id="paintCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+    <canvas id="uiCanvas"></canvas>
 
-    <label>Fade <input id="fadeSlider" type="range" min="5" max="60" value="28"></label>
+    <div id="topTitle" class="introText">
+      <span>CREATE</span>
+      Color Motion Playground
+    </div>
+
+    <div id="instruction" class="introText">
+      Move your hands slowly. Jump to make the world react.
+    </div>
+
+    <div id="modeBadge">Paint Trails</div>
+
+    <div id="staffPanel">
+      <button data-mode="paint">Paint</button>
+      <button data-mode="bubbles">Bubbles</button>
+      <button data-mode="stars">Stars</button>
+      <button data-mode="flowers">Flowers</button>
+      <button data-mode="mist">Mist</button>
+      <button data-mode="waves">Waves</button>
+
+      <button id="clearBtn">Clear</button>
+      <button id="autoBtn">Auto: Off</button>
+      <button id="soundBtn">Sound: Off</button>
+      <button id="logoBtn">Logo: On</button>
+      <button id="hideBtn">Hide</button>
+
+      <label>Fade <input id="fadeSlider" type="range" min="8" max="80" value="42" /></label>
+      <label>Float <input id="dragSlider" type="range" min="920" max="995" value="970" /></label>
+      <label>Jump <input id="jumpSlider" type="range" min="18" max="70" value="34" /></label>
+      <label>Smooth <input id="smoothSlider" type="range" min="8" max="45" value="22" /></label>
+    </div>
   </div>
-</div>
 
-<script src="game.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
