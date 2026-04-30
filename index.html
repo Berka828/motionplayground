@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BxCM Creative World</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+</head>
+
+<body>
+  <div id="splash">
+    <div class="splash-card">
+      <div class="eyebrow">BxCM Creative World</div>
+      <h1>Color Motion Playground</h1>
+      <p>
+        Move your hands to paint with light.  
+        Jump to create a splash explosion.
+      </p>
+
+      <select id="cameraSelect"></select>
+
+      <button id="startBtn">Start Experience</button>
+
+      <div class="hint">
+        Allow camera access when prompted.
+      </div>
+    </div>
+  </div>
+
+  <div id="game">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="paintCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+
+    <div id="topTitle">
+      <span>CREATE</span>
+      Color Motion Playground
+    </div>
+
+    <div id="instruction">
+      Raise both hands and move slowly to paint.
+    </div>
+
+    <div id="jumpText">SPLASH!</div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
