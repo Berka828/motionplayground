@@ -32,7 +32,7 @@ let detector = null;
 let currentStream = null;
 let running = false;
 
-let currentMode = "paint";
+let currentMode = "glow";
 let autoRotate = false;
 let controlsHidden = false;
 let soundEnabled = false;
@@ -56,7 +56,7 @@ let previousShoulderY = null;
 let jumpCooldown = 0;
 let noPoseFrames = 0;
 
-let fadeAmount = 0.042;
+let fadeAmount = 0.05;
 let dragAmount = 0.97;
 let jumpSensitivity = 34;
 let smoothingAmount = 0.22;
@@ -133,6 +133,13 @@ async function loadCameras() {
 
     cameraSelect.innerHTML = "";
 
+    if (cameras.length === 0) {
+      const option = document.createElement("option");
+      option.textContent = "No camera found";
+      cameraSelect.appendChild(option);
+      return;
+    }
+
     cameras.forEach((camera, index) => {
       const option = document.createElement("option");
       option.value = camera.deviceId;
@@ -141,7 +148,7 @@ async function loadCameras() {
     });
   } catch (err) {
     console.error("Camera list error:", err);
-    cameraSelect.innerHTML = `<option>No camera found</option>`;
+    cameraSelect.innerHTML = `<option>Camera permission needed</option>`;
   }
 }
 
@@ -310,38 +317,6 @@ function addHandGlow(point, color) {
   });
 }
 
-function drawPaintTrail(current, last) {
-  const speed = Math.hypot(current.x - last.x, current.y - last.y);
-  const width = Math.min(66, Math.max(14, speed * 0.38));
-  const color = randomColor();
-
-  paintCtx.save();
-  paintCtx.globalCompositeOperation = "source-over";
-  paintCtx.lineCap = "round";
-  paintCtx.lineJoin = "round";
-  paintCtx.strokeStyle = color;
-  paintCtx.globalAlpha = 0.48;
-  paintCtx.lineWidth = width;
-
-  paintCtx.beginPath();
-  paintCtx.moveTo(last.x, last.y);
-  paintCtx.quadraticCurveTo(
-    last.x * 0.5 + current.x * 0.5,
-    last.y * 0.5 + current.y * 0.5,
-    current.x,
-    current.y
-  );
-  paintCtx.stroke();
-  paintCtx.restore();
-
-  addHandGlow(current, color);
-
-  if (speed > 22) {
-    createSoftDots(current.x, current.y, color, 3);
-    playMovementSound(speed);
-  }
-}
-
 function drawColorGlow(current, last) {
   const speed = Math.hypot(current.x - last.x, current.y - last.y);
   const color = randomColor();
@@ -356,7 +331,7 @@ function drawColorGlow(current, last) {
       vx: (Math.random() - 0.5) * 1.1,
       vy: (Math.random() - 0.5) * 1.1,
       radius: Math.random() * 36 + 22,
-      alpha: 0.18,
+      alpha: 0.16,
       decay: 0.008,
       color,
       rotation: Math.random() * Math.PI,
@@ -367,40 +342,6 @@ function drawColorGlow(current, last) {
   if (speed > 24) {
     maybeSmallRing(current.x, current.y, color);
     playMovementSound(speed);
-  }
-}
-
-function createGlowExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 120; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 7 + 1.5;
-    const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
-
-    particles.push({
-      type: "mist",
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: Math.random() * 70 + 30,
-      alpha: 0.22,
-      decay: 0.0045,
-      color,
-      rotation: Math.random() * Math.PI,
-      grow: 1
-    });
-  }
-
-  for (let i = 0; i < 5; i++) {
-    ribbons.push({
-      x: x + (Math.random() - 0.5) * 360,
-      y: y + (Math.random() - 0.5) * 240,
-      radius: Math.random() * 42 + 32,
-      alpha: 0.24,
-      color: bloomColors[Math.floor(Math.random() * bloomColors.length)],
-      thickness: Math.random() * 4 + 1.5,
-      speed: 0.75
-    });
   }
 }
 
@@ -546,24 +487,6 @@ function maybeSmallRing(x, y, color) {
   }
 }
 
-function createSoftDots(x, y, color, count = 4) {
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      type: "dot",
-      x: x + (Math.random() - 0.5) * 42,
-      y: y + (Math.random() - 0.5) * 42,
-      vx: (Math.random() - 0.5) * 2.1,
-      vy: (Math.random() - 0.5) * 2.1,
-      radius: Math.random() * 7 + 4,
-      alpha: 0.44,
-      decay: 0.0125,
-      color,
-      rotation: Math.random() * Math.PI,
-      grow: 1
-    });
-  }
-}
-
 function createOrganicBloom(x, y) {
   const bloomColors = colors;
 
@@ -589,24 +512,24 @@ function createOrganicBloom(x, y) {
   playJumpSound();
 }
 
-function createPaintExplosion(x, y, bloomColors) {
-  for (let i = 0; i < 30; i++) {
+function createGlowExplosion(x, y, bloomColors) {
+  for (let i = 0; i < 120; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 7 + 1.5;
     const color = bloomColors[Math.floor(Math.random() * bloomColors.length)];
 
     particles.push({
-      type: "splat",
-      x: x + (Math.random() - 0.5) * 720,
-      y: y + (Math.random() - 0.5) * 460,
-      vx: (Math.random() - 0.5) * 2.5,
-      vy: (Math.random() - 0.5) * 2.5,
-      radius: Math.random() * 70 + 28,
-      rx: Math.random() * 120 + 50,
-      ry: Math.random() * 70 + 28,
-      alpha: 0.28,
-      decay: 0.01,
+      type: "mist",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 70 + 30,
+      alpha: 0.22,
+      decay: 0.0045,
       color,
       rotation: Math.random() * Math.PI,
-      grow: 0.3
+      grow: 1
     });
   }
 }
@@ -796,11 +719,6 @@ function updateParticles() {
       fxCtx.beginPath();
       fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       fxCtx.fill();
-    } else if (p.type === "splat") {
-      fxCtx.fillStyle = p.color;
-      fxCtx.beginPath();
-      fxCtx.ellipse(p.x, p.y, p.rx, p.ry, p.rotation, 0, Math.PI * 2);
-      fxCtx.fill();
     } else {
       fxCtx.fillStyle = p.color;
       fxCtx.beginPath();
@@ -922,34 +840,21 @@ function detectJump(leftShoulder, rightShoulder) {
 
 function drawAttractMode() {
   if (Math.random() > 0.96) {
-    const typeRoll = Math.random();
     const color = randomColor();
 
-    if (typeRoll < 0.5) {
-      particles.push({
-        type: "bubble",
-        x: Math.random() * window.innerWidth,
-        y: window.innerHeight + 40,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: -Math.random() * 0.8 - 0.25,
-        radius: Math.random() * 22 + 14,
-        alpha: 0.24,
-        decay: 0.003,
-        color,
-        rotation: 0,
-        grow: 1
-      });
-    } else {
-      ribbons.push({
-        x: Math.random() * window.innerWidth,
-        y: window.innerHeight * (0.35 + Math.random() * 0.4),
-        radius: Math.random() * 32 + 20,
-        alpha: 0.12,
-        color,
-        thickness: Math.random() * 2 + 1,
-        speed: 0.35
-      });
-    }
+    particles.push({
+      type: "bubble",
+      x: Math.random() * window.innerWidth,
+      y: window.innerHeight + 40,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: -Math.random() * 0.8 - 0.25,
+      radius: Math.random() * 22 + 14,
+      alpha: 0.24,
+      decay: 0.003,
+      color,
+      rotation: 0,
+      grow: 1
+    });
   }
 }
 
@@ -1106,7 +1011,7 @@ startBtn.addEventListener("click", async () => {
     gameLoop();
   } catch (err) {
     console.error(err);
-    alert("Camera or body tracking could not start. Try Chrome and allow camera access.");
+    alert("Camera or body tracking could not start. Try Chrome, allow camera access, and close OBS/Zoom if they are using the camera.");
     splash.style.display = "flex";
     game.style.display = "none";
   }
